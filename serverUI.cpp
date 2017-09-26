@@ -1,10 +1,14 @@
 #include <iostream>
+#include <csignal>
 #include <cstdlib>
 #include <ncurses.h>
 #include "userInterface.h"
 #include "server.h"
+#include "serverUI.h"
 
 void mainScreen();
+
+using namespace std;
 
 void* serverUI(void* arg) {
   startUI();
