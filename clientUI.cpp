@@ -2,9 +2,10 @@
 #include <csignal>
 #include <cstdlib>
 #include <ncurses.h>
-#include "userInterface.h"
-#include "server.h"
-#include "serverUI.h"
+
+#include "userInterface.hpp"
+#include "clientUi.hpp"
+#include "client.hpp"
 
 void mainScreen();
 
