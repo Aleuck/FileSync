@@ -1,7 +1,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "data.hpp"
+#include "util.hpp"
 
 using namespace std;
 

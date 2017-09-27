@@ -4,10 +4,10 @@ OBJ = $(SRC:.c=.o)
 
 all: server client
 
-server: server.o serverUI.o userInterface.o
+server: server.o serverUI.o userInterface.o util.o
 	$(CC) -o $@ $^ $(FLAGS)
 
-client: client.o serverUI.o userInterface.o
+client: client.o serverUI.o userInterface.o util.o
 	$(CC) -o $@ $^ $(FLAGS)
 
 %.o: %.cpp

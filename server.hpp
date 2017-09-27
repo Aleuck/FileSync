@@ -1,7 +1,7 @@
 #ifndef HEADER_SERVER
 #define HEADER_SERVER
 
-#include "data.hpp"
+#include "util.hpp"
 
 class Server {
 public:
