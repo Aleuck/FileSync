@@ -1,8 +1,4 @@
-#include <iostream>
-#include <csignal>
-#include <cstdlib>
-#include <ncurses.h>
-
+#include "util.hpp"
 #include "userInterface.hpp"
 #include "clientUi.hpp"
 #include "client.hpp"
