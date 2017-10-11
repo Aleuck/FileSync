@@ -22,12 +22,13 @@ TCPServer::TCPServer(void) {
 }
 
 TCPServer::TCPServer(int port) {
+  TCPServer();
   socklen_t sock_size = sizeof(addr);
 
   // create TCP socket
   sock_d = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
   if (sock_d < 0) {
-    throw runtime_error("Could not create socket.");
+    throw std::runtime_error("Could not create socket.");
   }
 
   addr.sin_addr.s_addr = INADDR_ANY;
@@ -35,22 +36,22 @@ TCPServer::TCPServer(int port) {
   addr.sin_family = AF_INET;
 
   if (bind(sock_d, (struct sockaddr *)&addr, sock_size) < 0) {
-    throw runtime_error("Could not bind socket to address.");
+    throw std::runtime_error("Could not bind socket to address.");
   }
   if(listen(sock_d, QUEUE_SIZE) < 0) {
-    throw runtime_error("Could not listen");
+    throw std::runtime_error("Could not start listenning.");
   }
 }
 
-TCPConnection* TCPServer::accept_con() {
+TCPConnection* TCPServer::accept() {
   TCPConnection *con = new TCPConnection;
   socklen_t sock_size;
   sock_size = sizeof(con->addr);
 
-  con->sock_d = accept(sock_d, (struct sockaddr *) &(con->addr), &sock_size);
+  con->sock_d = ::accept(sock_d, (struct sockaddr *) &(con->addr), &sock_size);
   if (con->sock_d < 0) {
     delete con;
-    throw runtime_error("could not accept connection");
+    throw std::runtime_error("Could not accept connection");
   }
   return con;
 }
@@ -61,11 +62,11 @@ TCPConnection::TCPConnection() {
   sock_d = 0;
 }
 
-ssize_t TCPConnection::send_bytes(char* buffer, size_t length) {
+ssize_t TCPConnection::send(char* buffer, size_t length) {
   size_t total_sent = 0;
   while (total_sent < length) {
     ssize_t bytes;
-    bytes = send(sock_d, buffer + total_sent, length - total_sent, 0);
+    bytes = ::send(sock_d, buffer + total_sent, length - total_sent, 0);
     if (bytes > 0) {
       total_sent += bytes;
     } else {
@@ -75,11 +76,11 @@ ssize_t TCPConnection::send_bytes(char* buffer, size_t length) {
   return total_sent;
 }
 
-ssize_t TCPConnection::recv_bytes(char *buffer, size_t length) {
+ssize_t TCPConnection::recv(char *buffer, size_t length) {
   size_t total_received = 0;
   while (total_received < length) {
     ssize_t bytes;
-    bytes = recv(sock_d, buffer + total_received, length - total_received, 0);
+    bytes = ::recv(sock_d, buffer + total_received, length - total_received, 0);
     if (bytes > 0) {
       total_received += bytes;
     } else {

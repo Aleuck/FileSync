@@ -12,7 +12,7 @@ class TCPServer {
 public:
   TCPServer(void);
   TCPServer(int port);
-  TCPConnection* accept_con();
+  TCPConnection* accept();
 private:
   struct sockaddr_in addr;
   int sock_d;
@@ -31,8 +31,8 @@ class TCPConnection {
 friend class TCPServer;
 friend class TCPClient;
 public:
-  ssize_t send_bytes(char* buffer, size_t length);
-  ssize_t recv_bytes(char* buffer, size_t length);
+  ssize_t send(char* buffer, size_t length);
+  ssize_t recv(char* buffer, size_t length);
   // void lock();
   // void unlock();
 private:

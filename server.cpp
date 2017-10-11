@@ -13,6 +13,8 @@ void close_server(int sig);
 
 pthread_t thread_ui;
 pthread_t thread_server;
+queue<string> server_log;
+mutex server_log_mutex;
 
 int main(int argc, char* argv[]) {
   TCPServer* server;
@@ -46,7 +48,15 @@ int main(int argc, char* argv[]) {
 
 void* run_server(void* arg) {
   TCPServer* serv = (TCPServer*) arg;
-
+  TCPConnection* con;
+  for (;;) {
+      try {
+        con = serv->accept();
+      }
+      catch (runtime_error e) {
+          // put error in log
+      }
+  }
   return NULL;
 }
 
