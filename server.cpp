@@ -4,7 +4,9 @@
 #include "tcp.hh"
 #include <mutex>
 
-#define MAX_CON 2
+#define DEFAULT_QUEUE_SIZE 5
+#define DEFAULT_MAX_CON 2
+#define DEFAULT_PORT 53232
 
 using namespace std;
 
@@ -13,11 +15,16 @@ void close_server(int sig);
 
 pthread_t thread_ui;
 pthread_t thread_server;
-queue<string> server_log;
-mutex server_log_mutex;
+
+FSServer* server;
+
+FSServer::FSServer(void) {
+  port = DEFAULT_PORT;
+  max_con = DEFAULT_MAX_CON;
+  is_running = false;
+}
 
 int main(int argc, char* argv[]) {
-  TCPServer* server;
   int errCode, port;
   signal(SIGINT, close_server);
   if (argc < 2) {
@@ -26,13 +33,7 @@ int main(int argc, char* argv[]) {
   }
   port = atoi(argv[1]);
   cout << "starting service..." << endl;
-  try {
-    server = new TCPServer(port);
-  }
-  catch (runtime_error e) {
-    cerr << e.what() << endl;
-    exit(1);
-  }
+  server = new FSServer();
   errCode = pthread_create(&thread_server, NULL, run_server, (void*) server);
   cout << "starting interface..." << endl;
   errCode = pthread_create(&thread_ui, NULL, serverUI, (void*) server);

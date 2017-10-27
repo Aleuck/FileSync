@@ -3,31 +3,37 @@
 
 #include <string>
 #include <sys/types.h>
+#include <netinet/in.h>
 
 class TCPServer;
 class TCPClient;
 class TCPConnection;
 
-class TCPServer {
+class TCPSock {
+public:
+  std::string getAddr();
+  int getPort();
+protected:
+  TCPSock(void);
+  struct sockaddr_in addr;
+  int sock_d;
+};
+
+class TCPServer : public TCPSock {
 public:
   TCPServer(void);
-  TCPServer(int port);
+  void bind(int port);
+  void listen(int queue_size);
   TCPConnection* accept();
-private:
-  struct sockaddr_in addr;
-  int sock_d;
 };
 
-class TCPClient {
+class TCPClient : public TCPSock {
 public:
   TCPClient(void);
-  TCPConnection* req_con(char* addr, int port);
-private:
-  struct sockaddr_in addr;
-  int sock_d;
+  TCPConnection* connect(std::string addr, int port);
 };
 
-class TCPConnection {
+class TCPConnection : public TCPSock {
 friend class TCPServer;
 friend class TCPClient;
 public:
@@ -37,8 +43,9 @@ public:
   // void unlock();
 private:
   TCPConnection(void);
-  struct sockaddr_in addr;
-  int sock_d;
+  size_t sendbuffer;
+  size_t recvbuffer;
+  int getbuffersizes();
 };
 
 #endif

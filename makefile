@@ -11,11 +11,15 @@ server: server.o serverUI.o userInterface.o util.o tcp.o
 client: client.o serverUI.o userInterface.o util.o tcp.o
 	$(CC) -o $@ $^ $(CFLAGS) $(LFLAGS)
 
+testtcp: testtcp.o util.o tcp.o
+	$(CC) -o $@ $^ $(CFLAGS) $(LFLAGS)
+
 %.o: %.cpp
 	$(CC) -o $@ -c $< $(CFLAGS)
 
 clean:
-	rm server client *.o
+	rm server client testtcp *.o
+
 
 love:
 	make clean
