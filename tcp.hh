@@ -27,12 +27,6 @@ public:
   TCPConnection* accept();
 };
 
-class TCPClient : public TCPSock {
-public:
-  TCPClient(void);
-  TCPConnection* connect(std::string addr, int port);
-};
-
 class TCPConnection : public TCPSock {
 friend class TCPServer;
 friend class TCPClient;
@@ -46,6 +40,12 @@ private:
   size_t sendbuffer;
   size_t recvbuffer;
   int getbuffersizes();
+};
+
+class TCPClient : public TCPConnection {
+public:
+  TCPClient(void);
+  void connect(std::string addr, int port);
 };
 
 #endif

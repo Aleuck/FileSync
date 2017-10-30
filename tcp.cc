@@ -1,4 +1,5 @@
 #include <string>
+#include <iostream>
 #include <cstring>
 #include <stdexcept>
 
@@ -13,14 +14,13 @@
 using namespace std;
 
 TCPSock::TCPSock(void) {
-  sock_d = 0;
   memset((char *) &addr, 0, sizeof(addr));
 }
 
 TCPServer::TCPServer(void) {
   // create TCP socket
   sock_d = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
-  if (sock_d < 0) {
+  if (sock_d <= 0) {
     throw std::runtime_error("Could not create socket.");
   }
 }
@@ -48,7 +48,7 @@ TCPConnection* TCPServer::accept() {
   sock_size = sizeof(con->addr);
 
   con->sock_d = ::accept(sock_d, (struct sockaddr *) &(con->addr), &sock_size);
-  if (con->sock_d < 0) {
+  if (con->sock_d <= 0) {
     delete con;
     throw std::runtime_error("Could not accept connection");
   }
@@ -63,18 +63,16 @@ TCPClient::TCPClient(void) {
   }
 }
 
-TCPConnection* TCPClient::connect(std::string addr, int port) {
-  TCPConnection *con = new TCPConnection;
+void TCPClient::connect(std::string address, int port) {
+  int aux_v;
   socklen_t sock_size;
-  sock_size = sizeof(con->addr);
+  sock_size = sizeof(addr);
+  addr.sin_addr.s_addr = inet_addr(address.c_str());
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(port);
 
-  con->addr.sin_addr.s_addr = inet_addr(addr.c_str());
-  con->addr.sin_family = AF_INET;
-  con->addr.sin_port = htons(port);
-
-  con->sock_d = ::connect(sock_d, (struct sockaddr *) &(con->addr), sock_size);
-  if (con->sock_d < 0) {
-    delete con;
+  aux_v = ::connect(sock_d, (struct sockaddr *) &addr, sock_size);
+  if (sock_d < 0) {
     switch (errno) {
       case EADDRNOTAVAIL:
         throw std::runtime_error("Could not connect (EADDRNOTAVAIL)");
@@ -149,7 +147,6 @@ TCPConnection* TCPClient::connect(std::string addr, int port) {
         throw std::runtime_error("Could not connect");
     }
   }
-  return con;
 }
 
 TCPConnection::TCPConnection() {
@@ -169,10 +166,11 @@ ssize_t TCPConnection::send(char* buffer, size_t length) {
   size_t total_sent = 0;
   while (total_sent < length) {
     ssize_t bytes;
-    bytes = ::send(sock_d, buffer + total_sent, length - total_sent, 0);
+    bytes = ::send(sock_d, &buffer[total_sent], length - total_sent, 0);
     if (bytes > 0) {
       total_sent += bytes;
     } else {
+      throw std::runtime_error("could not send bytes");
       return bytes;
     }
   }
@@ -183,11 +181,37 @@ ssize_t TCPConnection::recv(char *buffer, size_t length) {
   size_t total_received = 0;
   while (total_received < length) {
     ssize_t bytes;
-    bytes = ::recv(sock_d, buffer + total_received, length - total_received, 0);
+    bytes = ::recv(sock_d, &buffer[total_received], length - total_received, 0);
     if (bytes > 0) {
       total_received += bytes;
     } else {
+      switch (errno) {
+        case EBADF:
+          throw std::runtime_error("The argument sockfd is an invalid file descriptor.");
+
+        case ECONNREFUSED:
+          throw std::runtime_error("A remote host refused to allow the network connection (typically because it is not running the requested service).");
+
+        case EFAULT:
+          throw std::runtime_error("The receive buffer pointer(s) point outside the process's address space.");
+
+        case EINTR:
+          throw std::runtime_error("The receive was interrupted by delivery of a signal before any data were available; see signal(7).");
+
+        case EINVAL:
+          throw std::runtime_error("Invalid argument passed.");
+
+        case ENOMEM:
+          throw std::runtime_error("Could not allocate memory for recvmsg().");
+
+        case ENOTCONN:
+          throw std::runtime_error("The socket is associated with a connection-oriented protocol and has not been connected (see connect(2) and accept(2)).");
+
+        case ENOTSOCK:
+          throw std::runtime_error("The file descriptor sockfd does not refer to a socket.");
+
       return bytes;
+      }
     }
   }
   return total_received;
