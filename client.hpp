@@ -4,17 +4,18 @@
 #include "util.hpp"
 #include <string>
 
-class Session {
+class FileSyncClient {
 public:
-  Session();
-  Session(int port);
-  ~Session();
-  void connect_to_server(std::string address, int port);
+  FileSyncClient(void);
+  ~FileSyncClient(void);
+  void connect(std::string address, int port);
   bool login(std::string userid);
-  void send_file(std::string filepath);
-  void get_file(std::string filename);
+  void upload_file(std::string filepath);
+  void download_file(std::string filename);
   void delete_file(std::string filename);
+  void list_files(std::string filename);
 private:
+  TCPClient tcp;
   std::string userid;
   std::map<std::string, File> files;
   struct sockaddr_in server;

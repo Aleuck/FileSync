@@ -26,7 +26,18 @@
 
 #define MAXNAME 256
 
+#define REQUEST_LOGIN    1
+#define REQUEST_LOGOUT   2
+#define REQUEST_SYNC     3
+#define REQUEST_FLIST    3
+#define REQUEST_UPLOAD   4
+#define REQUEST_DOWNLOAD 5
+#define REQUEST_DELETE   6
 // structures
+
+typedef struct filesync_request {
+  uint32_t type;
+} fs_request_t;
 
 typedef struct user {
   char userid[MAXNAME];
@@ -39,6 +50,13 @@ typedef struct fileinfo {
   char last_modification[MAXNAME];
   uint32_t size;
 } fileinfo_t;
+
+typedef struct file_sync_action {
+  uint32_t id;
+  uint32_t type;
+  char name[MAXNAME];
+  char extension[MAXNAME];
+}
 
 // classes
 class User;
@@ -55,11 +73,11 @@ public:
 
 class File {
 public:
-  File(fileinfo_t fileinfo, User* owner);
+  File();
+  File(fileinfo_t fileinfo;
   std::string name;
   std::string extension;
   std::string last_modification;
-  User* owner;
   uint32_t size;
   fileinfo_t serialize();
   void unserialize(fileinfo_t info);
@@ -68,7 +86,10 @@ public:
 
 class Transfer {
 public:
-  File* fileinfo;
+  File fileinfo;
+  uint32_t size_due;
 };
+
+
 
 #endif

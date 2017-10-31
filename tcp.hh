@@ -19,14 +19,6 @@ protected:
   int sock_d;
 };
 
-class TCPServer : public TCPSock {
-public:
-  TCPServer(void);
-  void bind(int port);
-  void listen(int queue_size);
-  TCPConnection* accept();
-};
-
 class TCPConnection : public TCPSock {
 friend class TCPServer;
 friend class TCPClient;
@@ -35,11 +27,21 @@ public:
   ssize_t recv(char* buffer, size_t length);
   // void lock();
   // void unlock();
+protected:
+  bool isconnected;
 private:
   TCPConnection(void);
   size_t sendbuffer;
   size_t recvbuffer;
   int getbuffersizes();
+};
+
+class TCPServer : public TCPSock {
+public:
+  TCPServer(void);
+  void bind(int port);
+  void listen(int queue_size);
+  TCPConnection* accept();
 };
 
 class TCPClient : public TCPConnection {

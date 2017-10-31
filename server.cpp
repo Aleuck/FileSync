@@ -53,6 +53,7 @@ void* run_server(void* arg) {
   for (;;) {
       try {
         con = serv->accept();
+        errCode = pthread_create(&thread_server, NULL, run_server, (void*) server);
       }
       catch (runtime_error e) {
           // put error in log
