@@ -2,7 +2,7 @@
 
 using namespace std;
 
-File::File(fileinfo_t fileinfo, User* owner) {
+File::File(fileinfo_t fileinfo) {
 
 }
 fileinfo_t File::serialize() {

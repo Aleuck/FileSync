@@ -13,6 +13,7 @@ class TCPSock {
 public:
   std::string getAddr();
   int getPort();
+  void close();
 protected:
   TCPSock(void);
   struct sockaddr_in addr;

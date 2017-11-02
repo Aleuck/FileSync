@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "tcp.hh"
 
@@ -15,6 +16,10 @@ using namespace std;
 
 TCPSock::TCPSock(void) {
   memset((char *) &addr, 0, sizeof(addr));
+}
+
+void TCPSock::close() {
+  ::close(sock_d);
 }
 
 TCPServer::TCPServer(void) {

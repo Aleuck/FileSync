@@ -2,6 +2,7 @@
 #define HEADER_CLIENT
 
 #include "util.hpp"
+#include "tcp.hh"
 #include <string>
 
 class FileSyncClient {
@@ -14,10 +15,13 @@ public:
   void download_file(std::string filename);
   void delete_file(std::string filename);
   void list_files(std::string filename);
+  void set_dir_prefix(std::string dir_prefix);
+  void set_dir_prefix(char* dir_prefix);
 private:
   TCPClient tcp;
   std::string userid;
   std::map<std::string, File> files;
+  std::string userdir_prefix;
   struct sockaddr_in server;
   int connection;    // tcp socket
   pthread_mutex_t mutex;

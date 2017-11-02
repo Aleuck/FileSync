@@ -21,6 +21,7 @@
 #include <map>
 #include <queue>
 #include <vector>
+#include <list>
 #include <string>
 #include <iostream>
 
@@ -33,11 +34,24 @@
 #define REQUEST_UPLOAD   4
 #define REQUEST_DOWNLOAD 5
 #define REQUEST_DELETE   6
+
+#define LOGIN_ACCEPT     1
+#define LOGIN_DENY       2
+#define UPLOAD_ACCEPT    3
+#define UPLOAD_DENY      4
+#define DOWNLOAD_ACCEPT  5
+#define NOT_FOUND       44
 // structures
 
-typedef struct filesync_request {
+#define TRANSFER_OK     10
+#define TRANSFER_END    11
+
+#define MSG_LENGTH 512
+
+typedef struct filesync_message {
   uint32_t type;
-} fs_request_t;
+  char content[MSG_LENGTH];
+} fs_message_t;
 
 typedef struct user {
   char userid[MAXNAME];
@@ -51,12 +65,12 @@ typedef struct fileinfo {
   uint32_t size;
 } fileinfo_t;
 
-typedef struct file_sync_action {
+typedef struct filesync_action {
   uint32_t id;
   uint32_t type;
   char name[MAXNAME];
   char extension[MAXNAME];
-}
+} fs_action_t;
 
 // classes
 class User;
@@ -74,7 +88,7 @@ public:
 class File {
 public:
   File();
-  File(fileinfo_t fileinfo;
+  File(fileinfo_t fileinfo);
   std::string name;
   std::string extension;
   std::string last_modification;
@@ -89,7 +103,5 @@ public:
   File fileinfo;
   uint32_t size_due;
 };
-
-
 
 #endif
