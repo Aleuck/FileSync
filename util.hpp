@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <unistd.h>
+#include <pwd.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>

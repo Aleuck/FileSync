@@ -11,8 +11,8 @@ int main(int argc, char* argv[]) {
   cout << "Starting client..." << endl;
   FileSyncClient clnt;
   if (argc < 4) {
-    cerr << "Usage: $ ";
-    cerr << argv[0] << " <username> <address> <port>" << endl;
+    cerr << "Usage: $ " << argv[0];
+    cerr << " <username> <address> <port>" << endl;
     return 1;
   }
   client = &clnt;

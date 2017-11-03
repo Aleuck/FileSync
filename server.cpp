@@ -9,7 +9,7 @@
 #define DEFAULT_MAX_CON 2
 
 void* run_server(void* arg);
-void* handle_session(void* arg);
+void* run_session(void* arg);
 void close_server(int sig);
 
 pthread_t thread_ui;
@@ -53,12 +53,14 @@ int main(int argc, char* argv[]) {
 void* run_server(void* arg) {
   int errCode;
   FileSyncServer* serv = (FileSyncServer*) arg;
-  FileSyncSession* session;
   serv->run();
   return NULL;
 }
-void* handle_session(void* arg) {
+void* run_session(void* arg) {
   FileSyncSession* session = (FileSyncSession*) arg;
+  session->handle_requests();
+  // session stopped handling requests
+  delete session;
   return NULL;
 }
 
@@ -90,11 +92,12 @@ void FileSyncServer::listen() {
 
 void FileSyncServer::run() {
   int errCode;
+  pthread_t* thread_session = (pthread_t*) malloc(sizeof(pthread_t));
   FileSyncSession* session;
   for (;;) {
     try {
       session = accept();
-      errCode = pthread_create(&thread_server, NULL, handle_session, (void*) session);
+      errCode = pthread_create(thread_session, NULL, run_session, (void*) session);
       if (errCode != 0) {
         session->close();
       }
@@ -110,6 +113,11 @@ void FileSyncServer::run() {
 
 FileSyncSession* FileSyncServer::accept() {
   FileSyncSession* session = new FileSyncSession;
+  TCPConnection* conn;
+  conn = tcp.accept();
+  session->tcp = conn;
+  session->active = true;
+  session->user = NULL;
   return session;
 }
 
@@ -124,7 +132,31 @@ void FileSyncServer::set_queue_size(int queue_size) {
 
 FileSyncSession::FileSyncSession(void) {
 }
+FileSyncSession::~FileSyncSession(void) {
+  if (active) {
+    close();
+  }
+  // remove itself from server's session list
+  server->sessionsmutex.lock();
+  for (auto s = server->sessions.begin(); s != server->sessions.end();) {
+    if (*s == this) {
+      server->sessions.erase(s);
+      break;
+    }
+  }
+  server->sessionsmutex.unlock();
+  // remove itself from user's session list
+  user->sessionsmutex.lock();
+  for (auto s = user->sessions.begin(); s != user->sessions.end();) {
+    if (*s == this) {
+      user->sessions.erase(s);
+    }
+  }
+  user->sessionsmutex.unlock();
+  delete tcp;
+}
 
 void FileSyncSession::close() {
   tcp->close();
+  active = false;
 }
