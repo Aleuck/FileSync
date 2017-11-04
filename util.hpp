@@ -19,6 +19,7 @@
 #include <sys/stat.h>
 
 #include <stdexcept>
+#include <thread>
 #include <mutex>
 #include <map>
 #include <queue>
@@ -32,10 +33,10 @@
 #define REQUEST_LOGIN    1
 #define REQUEST_LOGOUT   2
 #define REQUEST_SYNC     3
-#define REQUEST_FLIST    3
-#define REQUEST_UPLOAD   4
-#define REQUEST_DOWNLOAD 5
-#define REQUEST_DELETE   6
+#define REQUEST_FLIST    4
+#define REQUEST_UPLOAD   5
+#define REQUEST_DOWNLOAD 6
+#define REQUEST_DELETE   7
 
 #define LOGIN_ACCEPT     1
 #define LOGIN_DENY       2

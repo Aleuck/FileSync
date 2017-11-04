@@ -12,19 +12,22 @@ class FileSyncServer {
 friend class FileSyncSession;
 public:
   FileSyncServer(void);
-  void start();
   FileSyncSession* accept();
   void set_port(int port);
   void set_queue_size(int queue_size);
   void listen();
-  void run();
+  void start();
+  void stop();
+  void wait();
 protected:
+  void run();
   TCPServer tcp;
-  int max_con;
+  unsigned int max_con;
   int tcp_port;
   int tcp_queue_size;
   bool tcp_active;
   bool running;
+  std::thread thread;
   std::map<std::string, ConnectedUser> users;
   std::mutex usersmutex;
   std::list<FileSyncSession*> sessions;
@@ -41,9 +44,17 @@ public:
   void close();
   ~FileSyncSession(void);
   void handle_requests();
+  void handle_login(fs_message_t& msg);
+  void handle_logout(fs_message_t& msg);
+  void handle_sync(fs_message_t& msg);
+  void handle_flist(fs_message_t& msg);
+  void handle_upload(fs_message_t& msg);
+  void handle_download(fs_message_t& msg);
+  void handle_delete(fs_message_t& msg);
 protected:
   FileSyncSession(void);
-  pthread_t* session;
+  void _run();
+  std::thread thread;
   TCPConnection* tcp;
   ConnectedUser* user;
   FileSyncServer* server;

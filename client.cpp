@@ -47,7 +47,7 @@ void FileSyncClient::connect(std::string address, int port) {
 bool FileSyncClient::login(std::string uid) {
   fs_message_t msg;
   msg.type = htonl(REQUEST_LOGIN);
-  memset(msg.content, 0, MSG_LENGTH);
+  memset(msg.content, 0, sizeof(msg.content));
   strncpy(msg.content, uid.c_str(), MAXNAME);
   tcp.send((char*) &msg, sizeof(msg));
   tcp.recv((char*) &msg, sizeof(msg));

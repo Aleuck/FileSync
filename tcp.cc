@@ -175,8 +175,46 @@ ssize_t TCPConnection::send(char* buffer, size_t length) {
     if (bytes > 0) {
       total_sent += bytes;
     } else {
-      throw std::runtime_error("could not send bytes");
-      return bytes;
+      if (bytes < 0) {
+        switch (errno) {
+          case EBADF:
+            throw std::runtime_error("(send) EBADF: The socket argument is not a valid file descriptor.");
+          case ECONNRESET:
+            throw std::runtime_error("(send) ECONNRESET: A connection was forcibly closed by a peer.");
+          case EDESTADDRREQ:
+            throw std::runtime_error("(send) EDESTADDRREQ: The socket is not connection-mode and no peer address is set.");
+          case EFAULT:
+            throw std::runtime_error("(send) EFAULT: The buffer parameter can not be accessed.");
+          case EINTR:
+            throw std::runtime_error("(send) EINTR: A signal interrupted send() before any data was transmitted.");
+          case EMSGSIZE:
+            throw std::runtime_error("(send) EMSGSIZE: The message is too large be sent all at once, as the socket requires.");
+          case ENOTCONN:
+            throw std::runtime_error("(send) ENOTCONN: The socket is not connected or otherwise has not had the peer prespecified.");
+          case ENOTSOCK:
+            throw std::runtime_error("(send) ENOTSOCK: The socket argument does not refer to a socket.");
+          case EOPNOTSUPP:
+            throw std::runtime_error("(send) EOPNOTSUPP: The socket argument is associated with a socket that does not support one or more of the values set in flags.");
+          case EPIPE:
+            throw std::runtime_error("(send) EPIPE: The socket is shut down for writing, or the socket is connection-mode and is no longer connected. In the latter case, and if the socket is of type SOCK_STREAM, the SIGPIPE signal is generated to the calling process.");
+          case EACCES:
+            throw std::runtime_error("(send) EACCES: The calling process does not have the appropriate privileges.");
+          case EIO:
+            throw std::runtime_error("(send) EIO: An I/O error occurred while reading from or writing to the file system.");
+          case ENETDOWN:
+            throw std::runtime_error("(send) ENETDOWN: The local interface used to reach the destination is down.");
+          case ENETUNREACH:
+            throw std::runtime_error("(send) ENETUNREACH: No route to the network is present.");
+          case ENOBUFS:
+            throw std::runtime_error("(send) ENOBUFS: Insufficient resources were available in the system to perform the operation.");
+          case ENOSR:
+            throw std::runtime_error("(send) ENOSR: There were insufficient STREAMS resources available for the operation to complete.");
+          default:
+            throw std::runtime_error("(send) send: Undefined error");
+        }
+      } else {
+        return bytes;
+      }
     }
   }
   return total_sent;
@@ -190,32 +228,34 @@ ssize_t TCPConnection::recv(char *buffer, size_t length) {
     if (bytes > 0) {
       total_received += bytes;
     } else {
-      switch (errno) {
+      if (bytes < 0) switch (errno) {
         case EBADF:
-          throw std::runtime_error("The argument sockfd is an invalid file descriptor.");
+          throw std::runtime_error("(recv) EBADF: The argument sockfd is an invalid file descriptor.");
 
         case ECONNREFUSED:
-          throw std::runtime_error("A remote host refused to allow the network connection (typically because it is not running the requested service).");
+          throw std::runtime_error("(recv) ECONNREFUSED: A remote host refused to allow the network connection (typically because it is not running the requested service).");
 
         case EFAULT:
-          throw std::runtime_error("The receive buffer pointer(s) point outside the process's address space.");
+          throw std::runtime_error("(recv) EFAULT: The receive buffer pointer(s) point outside the process's address space.");
 
         case EINTR:
-          throw std::runtime_error("The receive was interrupted by delivery of a signal before any data were available; see signal(7).");
+          throw std::runtime_error("(recv) EINTR: The receive was interrupted by delivery of a signal before any data were available; see signal(7).");
 
         case EINVAL:
-          throw std::runtime_error("Invalid argument passed.");
+          throw std::runtime_error("(recv) EINVAL: Invalid argument passed.");
 
         case ENOMEM:
-          throw std::runtime_error("Could not allocate memory for recvmsg().");
+          throw std::runtime_error("(recv) ENOMEM: Could not allocate memory for recvmsg().");
 
         case ENOTCONN:
-          throw std::runtime_error("The socket is associated with a connection-oriented protocol and has not been connected (see connect(2) and accept(2)).");
+          throw std::runtime_error("(recv) ENOTCONN: The socket is associated with a connection-oriented protocol and has not been connected (see connect(2) and accept(2)).");
 
         case ENOTSOCK:
-          throw std::runtime_error("The file descriptor sockfd does not refer to a socket.");
-
-      return bytes;
+          throw std::runtime_error("(recv) ENOTSOCK: The file descriptor sockfd does not refer to a socket.");
+        default:
+          throw std::runtime_error("(recv) Undefined error");
+      } else {
+        return bytes;
       }
     }
   }
