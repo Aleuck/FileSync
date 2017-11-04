@@ -30,9 +30,14 @@ int main(int argc, char* argv[]) {
   }
   if (!clnt.login(userid)) {
     std::cerr << "Login failed" << '\n';
+    clnt.close();
   } else {
-    std::cerr << "Login Successful" << '\n';
+    std::cerr << "Logged in successfully as ";
+    std::cerr << clnt.userid << '\n';
   }
+  clnt.initdir(); // create dir if needed
+  clnt.start(); //
+  clnt.wait(); // wait till client is closed
   return 0;
 }
 
@@ -62,7 +67,35 @@ bool FileSyncClient::login(std::string uid) {
       return false;
   }
 }
+
+void FileSyncClient::start() {
+  sync_running = true;
+  sync_thread = std::thread(&FileSyncClient::sync, this);
+}
+void FileSyncClient::action_handler() {
+}
+
+void FileSyncClient::close() {
+  sync_running = false;
+  sync_thread.join();
+  tcp.close();
+}
+void FileSyncClient::sync() {
+  while (sync_running) {
+
+  }
+}
+void FileSyncClient::wait() {
+  sync_thread.join();
+}
+
+void FileSyncClient::initdir() {
+}
+
+
 void FileSyncClient::upload_file(std::string filepath) {}
 void FileSyncClient::download_file(std::string filename) {}
 void FileSyncClient::delete_file(std::string filename) {}
 void FileSyncClient::list_files(std::string filename) {}
+
+FilesyncAction::FilesyncAction(int type, std::string arg) {}

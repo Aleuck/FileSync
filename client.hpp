@@ -5,6 +5,17 @@
 #include "tcp.hh"
 #include <string>
 
+class FileSyncClient;
+class FilesyncAction;
+
+class FilesyncAction {
+public:
+  FilesyncAction(int type, std::string arg);
+  int type;
+  std::string arg;
+protected:
+};
+
 class FileSyncClient {
 public:
   FileSyncClient(void);
@@ -16,15 +27,23 @@ public:
   void delete_file(std::string filename);
   void list_files(std::string filename);
   void set_dir_prefix(std::string dir_prefix);
-  void set_dir_prefix(char* dir_prefix);
-private:
-  TCPClient tcp;
+  void start();
+  void close();
+  void wait();
+  void initdir();
   std::string userid;
+private:
+  void sync();
+  void action_handler();
+  bool sync_running;
+  std::thread sync_thread;
   std::map<std::string, File> files;
+  std::mutex filesmutex;
+  TCPClient tcp;
+  std::mutex tcpmutex;
   std::string userdir_prefix;
-  struct sockaddr_in server;
+  std::queue<FilesyncAction> actions_queue;
   int connection;    // tcp socket
-  pthread_mutex_t mutex;
   bool connected;
 };
 
