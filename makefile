@@ -1,18 +1,18 @@
 CC = g++
 CFLAGS = -std=c++11 -Wall -g
-LFLAGS = -pthread -lncurses -ltinfo
+LFLAGS = -lpthread -lrt -lncurses -ltinfo
 OBJ = $(SRC:.c=.o)
 
 all: server client
 
 server: server.o serverUI.o userInterface.o util.o tcp.o
-	$(CC) -o $@ $^ $(CFLAGS) $(LFLAGS)
+	$(CC) -o $@ $^ $(LFLAGS)
 
 client: client.o serverUI.o userInterface.o util.o tcp.o
-	$(CC) -o $@ $^ $(CFLAGS) $(LFLAGS)
+	$(CC) -o $@ $^ $(LFLAGS)
 
 testtcp: testtcp.o util.o tcp.o
-	$(CC) -o $@ $^ $(CFLAGS) $(LFLAGS)
+	$(CC) -o $@ $^ $(LFLAGS)
 
 %.o: %.cpp
 	$(CC) -o $@ -c $< $(CFLAGS)

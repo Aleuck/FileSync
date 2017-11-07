@@ -79,6 +79,7 @@ typedef struct filesync_action {
 class User;
 class File;
 class Transfer;
+class Semaphore;
 
 class User {
 public:
@@ -106,5 +107,20 @@ public:
   File fileinfo;
   uint32_t size_due;
 };
+
+class Semaphore {
+public:
+  Semaphore(int value);
+  Semaphore(void);
+  ~Semaphore(void);
+  int post();
+  int wait();
+  int destroy();
+private:;
+  bool initialized;
+  sem_t sem;
+};
+
+const char* get_homedir();
 
 #endif

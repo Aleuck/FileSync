@@ -27,6 +27,7 @@ protected:
   int tcp_queue_size;
   bool tcp_active;
   bool running;
+  std::string homedir;
   std::thread thread;
   std::map<std::string, ConnectedUser> users;
   std::mutex usersmutex;

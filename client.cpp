@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
     std::cerr << clnt.userid << '\n';
   }
   clnt.initdir(); // create dir if needed
-  clnt.start(); //
+  clnt.start(); // starts client threads
   clnt.wait(); // wait till client is closed
   return 0;
 }
@@ -72,7 +72,41 @@ void FileSyncClient::start() {
   sync_running = true;
   sync_thread = std::thread(&FileSyncClient::sync, this);
 }
+void FileSyncClient::enqueue_action(FilesyncAction action) {
+  actions_mutex.lock();
+  actions_queue.push(action);
+  actions_mutex.unlock();
+  actions_sem.post();
+}
 void FileSyncClient::action_handler() {
+  int sig;
+  while (running) {
+    try {
+      // semmaphore waits till there are actions to perform
+      sig = actions_sem.wait();
+    }
+    catch (runtime_error e) {
+      std::cout << e.what() << '\n';
+      exit(-1);
+    }
+    if (sig) {
+      // signal interrupted semaphore waiting
+      exit(0);
+    }
+    actions_mutex.lock();
+    FilesyncAction action = actions_queue.front();
+    actions_queue.pop();
+    actions_mutex.unlock();
+    switch (action.type) {
+      case REQUEST_FLIST:
+      case REQUEST_UPLOAD:
+      case REQUEST_DOWNLOAD:
+      case REQUEST_DELETE:
+      default:
+        log("Action not implemented");
+    }
+    // execute action
+  }
 }
 
 void FileSyncClient::close() {
@@ -92,10 +126,20 @@ void FileSyncClient::wait() {
 void FileSyncClient::initdir() {
 }
 
+void FileSyncClient::log(std::string msg) {
+  qlog_mutex.lock();
+  qlog.push(msg);
+  qlog_mutex.unlock();
+  qlog_sem.post();
+}
+
 
 void FileSyncClient::upload_file(std::string filepath) {}
 void FileSyncClient::download_file(std::string filename) {}
 void FileSyncClient::delete_file(std::string filename) {}
 void FileSyncClient::list_files(std::string filename) {}
 
-FilesyncAction::FilesyncAction(int type, std::string arg) {}
+FilesyncAction::FilesyncAction(int type, std::string arg) {
+  this->type = type;
+  this->arg = arg;
+}

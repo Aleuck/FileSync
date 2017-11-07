@@ -7,12 +7,13 @@
 #define DEFAULT_QUEUE_SIZE 5
 #define DEFAULT_PORT 53232
 #define DEFAULT_MAX_CON 2
+#define SERVER_DIR "FileSync_files"
 
 void close_server(int sig);
 
 // pthread_t thread_ui;
 
-//FileSyncServer* server = NULL;
+FileSyncServer* server = NULL;
 
 int main(int argc, char* argv[]) {
   FileSyncServer serv;
@@ -49,12 +50,13 @@ int main(int argc, char* argv[]) {
 }
 
 void close_server(int sig) {
+  server->stop();
+  server->wait();
   // pthread_kill(thread_ui, sig);
   // pthread_join(thread_ui, NULL);
   // std::cout << "Stopping service..." << sig << std::endl;
   // pthread_kill(thread_server, sig);
   // pthread_join(thread_server, NULL);
-  exit(0);
 }
 
 FileSyncServer::FileSyncServer(void) {
@@ -63,6 +65,8 @@ FileSyncServer::FileSyncServer(void) {
   tcp_queue_size = DEFAULT_QUEUE_SIZE;
   tcp_active = false;
   running = false;
+  homedir = get_homedir();
+  std::cout << homedir << '\n';
 }
 
 void FileSyncServer::start() {
@@ -71,6 +75,10 @@ void FileSyncServer::start() {
   tcp_active = true;
   running = true;
   thread = std::thread(&FileSyncServer::run, this);
+}
+
+void FileSyncServer::stop() {
+  running = false;
 }
 
 void FileSyncServer::wait() {
@@ -95,6 +103,11 @@ void FileSyncServer::run() {
       continue;
     }
   }
+  // server is Stopping
+  if (tcp_active) {
+    tcp.close();
+    tcp_active = false;
+  }
 }
 
 FileSyncSession* FileSyncServer::accept() {
@@ -109,15 +122,24 @@ FileSyncSession* FileSyncServer::accept() {
 }
 
 void FileSyncServer::set_port(int port) {
-  tcp_port = port;
+  if (!tcp_active)
+    tcp_port = port;
+  else
+    throw std::runtime_error("Cannot set port while tcp is active");
 }
 
 void FileSyncServer::set_queue_size(int queue_size) {
-  tcp_queue_size = queue_size;
+  if (!tcp_active)
+    tcp_queue_size = queue_size;
+  else
+    throw std::runtime_error("Cannot set queue_size while tcp is active");
 }
 
 
 FileSyncSession::FileSyncSession(void) {
+  tcp = NULL;
+  user = NULL;
+  server = NULL;
 }
 FileSyncSession::~FileSyncSession(void) {
   if (active) {
@@ -145,7 +167,7 @@ FileSyncSession::~FileSyncSession(void) {
 
 void FileSyncSession::handle_requests() {
   fs_message_t msg;
-  while (active) {
+  while (active && server->running) {
     memset((char*) &msg, 0, sizeof(msg));
     tcp->recv((char*) &msg, sizeof(msg));
     msg.type = ntohl(msg.type);
@@ -173,6 +195,7 @@ void FileSyncSession::handle_requests() {
         break;
     }
   }
+  tcp->close();
 }
 
 void FileSyncSession::handle_login(fs_message_t& msg) {
@@ -209,7 +232,6 @@ void FileSyncSession::handle_delete(fs_message_t& msg) {
 }
 
 void FileSyncSession::close() {
-  tcp->close();
   active = false;
 }
 
