@@ -52,7 +52,7 @@ void FileSyncClient::connect(std::string address, int port) {
 bool FileSyncClient::login(std::string uid) {
   fs_message_t msg;
   msg.type = htonl(REQUEST_LOGIN);
-  memset(msg.content, 0, sizeof(msg.content));
+  memset(msg.content, 0, sizeof(MSG_LENGTH));
   strncpy(msg.content, uid.c_str(), MAXNAME);
   tcp.send((char*) &msg, sizeof(msg));
   tcp.recv((char*) &msg, sizeof(msg));
@@ -74,6 +74,7 @@ void FileSyncClient::start() {
 }
 void FileSyncClient::enqueue_action(FilesyncAction action) {
   actions_mutex.lock();
+  action.id = ++last_action;
   actions_queue.push(action);
   actions_mutex.unlock();
   actions_sem.post();
@@ -81,27 +82,38 @@ void FileSyncClient::enqueue_action(FilesyncAction action) {
 void FileSyncClient::action_handler() {
   int sig;
   while (running) {
+    // wait for an action to be available
     try {
       // semmaphore waits till there are actions to perform
       sig = actions_sem.wait();
     }
     catch (runtime_error e) {
+      // some error occured, possibly deadlock condition?
       std::cout << e.what() << '\n';
       exit(-1);
     }
     if (sig) {
-      // signal interrupted semaphore waiting
+      // semaphore interrupted by signal
       exit(0);
     }
+    // get next action;
     actions_mutex.lock();
     FilesyncAction action = actions_queue.front();
     actions_queue.pop();
     actions_mutex.unlock();
     switch (action.type) {
       case REQUEST_FLIST:
+        list_files(action.arg);
+        break;
       case REQUEST_UPLOAD:
+        upload_file(action.arg);
+        break;
       case REQUEST_DOWNLOAD:
+        download_file(action.arg);
+        break;
       case REQUEST_DELETE:
+        delete_file(action.arg);
+        break;
       default:
         log("Action not implemented");
     }
@@ -124,6 +136,7 @@ void FileSyncClient::wait() {
 }
 
 void FileSyncClient::initdir() {
+  string homedir = get_homedir();
 }
 
 void FileSyncClient::log(std::string msg) {
@@ -134,10 +147,26 @@ void FileSyncClient::log(std::string msg) {
 }
 
 
-void FileSyncClient::upload_file(std::string filepath) {}
-void FileSyncClient::download_file(std::string filename) {}
-void FileSyncClient::delete_file(std::string filename) {}
-void FileSyncClient::list_files(std::string filename) {}
+void FileSyncClient::upload_file(std::string filepath) {
+  fs_message_t msg;
+  memset((char*) &msg, 0, sizeof(msg));
+  msg.type = REQUEST_UPLOAD;
+}
+void FileSyncClient::download_file(std::string filename) {
+  fs_message_t msg;
+  memset((char*) &msg, 0, sizeof(msg));
+  msg.type = REQUEST_DOWNLOAD;
+}
+void FileSyncClient::delete_file(std::string filename) {
+  fs_message_t msg;
+  memset((char*) &msg, 0, sizeof(msg));
+  msg.type = REQUEST_DELETE;
+}
+void FileSyncClient::list_files(std::string filename) {
+  fs_message_t msg;
+  memset((char*) &msg, 0, sizeof(msg));
+  msg.type = REQUEST_FLIST;
+}
 
 FilesyncAction::FilesyncAction(int type, std::string arg) {
   this->type = type;

@@ -11,6 +11,7 @@ class FilesyncAction;
 class FilesyncAction {
 public:
   FilesyncAction(int type, std::string arg);
+  uint32_t id;
   int type;
   std::string arg;
 protected:
@@ -47,6 +48,7 @@ private:
   std::string userdir_prefix;
   std::queue<FilesyncAction> actions_queue;
   std::mutex actions_mutex;
+  uint32_t last_action;
   Semaphore actions_sem;
   std::queue<std::string> qlog;
   std::mutex qlog_mutex;
