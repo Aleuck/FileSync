@@ -19,6 +19,7 @@ public:
   void start();
   void stop();
   void wait();
+  void log(std::string);
 protected:
   void run();
   TCPServer tcp;
@@ -66,6 +67,7 @@ class ConnectedUser {
 friend class FileSyncSession;
 public:
   std::string userid;
+  std::string userdir;
   ConnectedUser(void);
 protected:
   std::list<FileSyncSession*> sessions;

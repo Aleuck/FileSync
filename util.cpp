@@ -8,14 +8,14 @@ File::File(fileinfo_t fileinfo) {
 fileinfo_t File::serialize() {
   fileinfo_t info;
   strcpy(info.name, this->name.c_str());
-  info.last_modification = this->last_modification;
+  info.last_mod = this->last_mod;
   info.size = this->size;
   return info;
 }
 
 void File::unserialize(fileinfo_t info) {
   this->name = info.name;
-  this->last_modification = info.last_modification;
+  this->last_mod = info.last_mod;
   this->size = info.size;
 }
 

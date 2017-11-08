@@ -31,6 +31,7 @@ int main(int argc, char* argv[]) {
   if (!clnt.login(userid)) {
     std::cerr << "Login failed" << '\n';
     clnt.close();
+    exit(0);
   } else {
     std::cerr << "Logged in successfully as ";
     std::cerr << clnt.userid << '\n';
@@ -60,10 +61,13 @@ bool FileSyncClient::login(std::string uid) {
   switch (msg.type) {
     case LOGIN_ACCEPT:
       userid.assign(uid);
+      log("Log in accepted.");
       return true;
     case LOGIN_DENY:
+      log("Log in denied.");
       return false;
     default:
+      log("Could not login. Server error.");
       return false;
   }
 }
@@ -124,8 +128,8 @@ void FileSyncClient::action_handler() {
 void FileSyncClient::close() {
   sync_running = false;
   running = false;
-  sync_thread.join();
   tcp.close();
+  sync_thread.join();
 }
 void FileSyncClient::sync() {
   while (sync_running) {
@@ -163,7 +167,7 @@ void FileSyncClient::upload_file(std::string filepath) {
   fileinfo_t fileinfo;
   strncpy(fileinfo.name, filename.c_str(), MAXNAME);
   size_t size = file.tellg();
-  fileinfo.last_modification = htonl(filestats.st_mtime);
+  fileinfo.last_mod = htonl(filestats.st_mtime);
   fileinfo.size = htonl(size);
   // prepare request message
   fs_message_t msg;
@@ -194,25 +198,35 @@ void FileSyncClient::upload_file(std::string filepath) {
       size_t total_sent = 0;
       while (!file.eof()) {
         file.read(msg.content, MSG_LENGTH);
+        if (file.eof()) {
+          msg.type = htonl(TRANSFER_END);
+        }
         try {
           ssize_t sent = tcp.send((char*) &msg, sizeof(fs_message_t));
           if (sent == 0) {
-            cloese();
+            file.close();
+            close();
+            return;
           }
         }
         catch (std::runtime_error e) {
+          file.close();
           log(e.what());
+          close();
           return;
         }
         total_sent += MSG_LENGTH;
       }
+      file.close();
     } break;
     case UPLOAD_DENY: {
       // log incident and abort
+      file.close();
       std::string reason = msg.content;
       log("Upload of '" + filename + "' refused by server: " + reason);
     } break;
     default: {
+      file.close();
       log("Upload of '" + filename + "' failed. Unrecognized server reply.");
     } break;
   }
@@ -231,17 +245,69 @@ void FileSyncClient::download_file(std::string filepath) {
   strncpy(msg.content, filename.c_str(), MAXNAME);
   try {
     ssize_t aux;
-    aux = msg.send((char*) &msg, sizeof(fs_message_t));
-    aux = msg.recv((char*) &msg, sizeof(fs_message_t));
+    aux = tcp.send((char*) &msg, sizeof(fs_message_t));
+    aux = tcp.recv((char*) &msg, sizeof(fs_message_t));
     if (aux == 0) {
+      file.close();
       close();
       return;
     }
   }
   catch (std::runtime_error e) {
+    file.close();
     log(e.what());
     return;
   }
+  msg.type = ntohl(msg.type);
+  switch (msg.type) {
+    case DOWNLOAD_ACCEPT:
+      log("Downloading file '" + filename + "'.");
+      break;
+    case NOT_FOUND:
+      log("File '" + filename + "' not found.");
+      return;
+    default:
+      log("Invalid server response");
+      return;
+  }
+  fileinfo_t fileinfo;
+  memcpy((char*) &fileinfo, msg.content, sizeof(fileinfo_t));
+  fileinfo.size = ntohl(fileinfo.size);
+  fileinfo.last_mod = ntohl(fileinfo.last_mod);
+  size_t total_received = 0;
+  while (total_received < fileinfo.size) {
+    try {
+      ssize_t received;
+      received = tcp.recv((char*) &msg, sizeof(fs_message_t));
+      if (received == 0) {
+        file.close();
+        log("Connection closed");
+        close();
+        return;
+      }
+    }
+    catch (std::runtime_error e) {
+      file.close();
+      log(e.what());
+      close();
+      return;
+    }
+    msg.type = ntohl(msg.type);
+    switch (msg.type) {
+      case TRANSFER_OK:
+        file.write(msg.content, MSG_LENGTH);
+        break;
+      case TRANSFER_END:
+        file.write(msg.content, fileinfo.size - total_received);
+        break;
+      default:
+        file.close();
+        log("Invalid message.");
+        return;
+    }
+    total_received += MSG_LENGTH;
+  }
+  file.close();
 }
 void FileSyncClient::delete_file(std::string filename) {
   fs_message_t msg;

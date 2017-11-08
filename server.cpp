@@ -52,6 +52,7 @@ int main(int argc, char* argv[]) {
 void close_server(int sig) {
   server->stop();
   server->wait();
+  exit(0);
   // pthread_kill(thread_ui, sig);
   // pthread_join(thread_ui, NULL);
   // std::cout << "Stopping service..." << sig << std::endl;
@@ -77,8 +78,19 @@ void FileSyncServer::start() {
   thread = std::thread(&FileSyncServer::run, this);
 }
 
+void FileSyncServer::log(std::string msg) {
+  qlogmutex.lock();
+  qlog.push(msg);
+  qlogmutex.unlock();
+}
 void FileSyncServer::stop() {
   running = false;
+  tcp.close();
+  sessionsmutex.lock();
+  for (auto i = sessions.begin(); i != sessions.end(); ++i) {
+    (*i)->close();
+  }
+  sessionsmutex.unlock();
 }
 
 void FileSyncServer::wait() {
@@ -97,10 +109,8 @@ void FileSyncServer::run() {
     }
     catch (std::runtime_error e) {
       std::cerr << e.what() << '\n';
-      qlogmutex.lock();
-      qlog.push(e.what());
-      qlogmutex.unlock();
-      continue;
+      log(e.what());
+      break;
     }
   }
   // server is Stopping
@@ -145,10 +155,12 @@ FileSyncSession::~FileSyncSession(void) {
   if (active) {
     close();
   }
+  std::cerr << "session closed" << std::endl;
   // remove itself from server's session list
   server->sessionsmutex.lock();
   for (auto s = server->sessions.begin(); s != server->sessions.end();) {
     if (*s == this) {
+      std::cerr << "deleting session from server list" << std::endl;
       server->sessions.erase(s);
       break;
     }
@@ -158,6 +170,7 @@ FileSyncSession::~FileSyncSession(void) {
   user->sessionsmutex.lock();
   for (auto s = user->sessions.begin(); s != user->sessions.end();) {
     if (*s == this) {
+      std::cerr << "deleting session from user list" << std::endl;
       user->sessions.erase(s);
     }
   }
@@ -169,7 +182,17 @@ void FileSyncSession::handle_requests() {
   fs_message_t msg;
   while (active && server->running) {
     memset((char*) &msg, 0, sizeof(msg));
-    tcp->recv((char*) &msg, sizeof(msg));
+    try {
+      ssize_t aux = tcp->recv((char*) &msg, sizeof(msg));
+      if (aux == 0) {
+        // log("connection closed.");
+        break;
+      }
+    }
+    catch (std::runtime_error e) {
+      // log("problem with connection");
+      break;
+    }
     msg.type = ntohl(msg.type);
     switch (msg.type) {
       case REQUEST_LOGIN:
@@ -226,17 +249,24 @@ void FileSyncSession::handle_flist(fs_message_t& msg) {
 }
 void FileSyncSession::handle_upload(fs_message_t& msg) {
   fileinfo_t fileinfo;
-  memcpy((char*) fileinfo, msg.content, sizeof(fileinfo_t));
+  memcpy((char*) &fileinfo, msg.content, sizeof(fileinfo_t));
   fileinfo.size = ntohl(fileinfo.size);
   fileinfo.last_mod = ntohl(fileinfo.last_mod);
 }
 void FileSyncSession::handle_download(fs_message_t& msg) {
+  fileinfo_t fileinfo;
+  // get file name
+  char cfilename[MAXNAME];
+  strncpy(cfilename, msg.content, MAXNAME);
+  std::string filename = cfilename;
 }
 void FileSyncSession::handle_delete(fs_message_t& msg) {
 }
 
 void FileSyncSession::close() {
   active = false;
+  tcp->close();
+  thread.join();
 }
 
 ConnectedUser::ConnectedUser(void) {}
