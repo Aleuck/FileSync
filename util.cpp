@@ -8,15 +8,13 @@ File::File(fileinfo_t fileinfo) {
 fileinfo_t File::serialize() {
   fileinfo_t info;
   strcpy(info.name, this->name.c_str());
-  strcpy(info.extension, this->extension.c_str());
-  strcpy(info.last_modification, this->last_modification.c_str());
+  info.last_modification = this->last_modification;
   info.size = this->size;
   return info;
 }
 
 void File::unserialize(fileinfo_t info) {
   this->name = info.name;
-  this->extension = info.extension;
   this->last_modification = info.last_modification;
   this->size = info.size;
 }
@@ -102,4 +100,11 @@ const char* get_homedir() {
       exit(1);
   }
   return homedir;
+}
+
+std::string filename_from_path(std::string filepath) {
+  char cfilepath[MAXNAME];
+  strncpy(cfilepath, filepath.c_str(), MAXNAME);
+  std::string filename = basename(cfilepath);
+  return filename;
 }

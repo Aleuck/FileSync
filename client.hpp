@@ -2,7 +2,7 @@
 #define HEADER_CLIENT
 
 #include "util.hpp"
-#include "tcp.hh"
+#include "tcp.hpp"
 #include <string>
 
 class FileSyncClient;

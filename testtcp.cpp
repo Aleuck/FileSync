@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <pthread.h>
 
-#include "tcp.hh"
+#include "tcp.hpp"
 
 #define DEFAULT_PORT 22022
 #define NUM_PKGS 300000

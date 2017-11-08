@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "tcp.hh"
+#include "tcp.hpp"
 
 using namespace std;
 
@@ -69,84 +69,84 @@ TCPClient::TCPClient(void) {
 }
 
 void TCPClient::connect(std::string address, int port) {
-  int aux_v;
+  int err;
   socklen_t sock_size;
   sock_size = sizeof(addr);
   addr.sin_addr.s_addr = inet_addr(address.c_str());
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port);
 
-  aux_v = ::connect(sock_d, (struct sockaddr *) &addr, sock_size);
-  if (sock_d < 0) {
+  err = ::connect(sock_d, (struct sockaddr *) &addr, sock_size);
+  if (err) {
     switch (errno) {
       case EADDRNOTAVAIL:
-        throw std::runtime_error("Could not connect (EADDRNOTAVAIL)");
+        throw std::runtime_error("EADDRNOTAVAIL: Could not connect.");
         break;
       case EAFNOSUPPORT:
-        throw std::runtime_error("Could not connect (EAFNOSUPPORT)");
+        throw std::runtime_error("EAFNOSUPPORT: Could not connect.");
         break;
       case EALREADY:
-        throw std::runtime_error("Could not connect (EALREADY)");
+        throw std::runtime_error("EALREADY: Could not connect.");
         break;
       case EBADF:
-        throw std::runtime_error("Could not connect (EBADF)");
+        throw std::runtime_error("EBADF: Could not connect.");
         break;
       case ECONNREFUSED:
-        throw std::runtime_error("Could not connect (ECONNREFUSED)");
+        throw std::runtime_error("ECONNREFUSED: Could not connect.");
         break;
       case EFAULT:
-        throw std::runtime_error("Could not connect (EFAULT)");
+        throw std::runtime_error("EFAULT: Could not connect.");
         break;
       case EINPROGRESS:
-        throw std::runtime_error("Could not connect (EINPROGRESS)");
+        throw std::runtime_error("EINPROGRESS: Could not connect.");
         break;
       case EINTR:
-        throw std::runtime_error("Could not connect (EINTR)");
+        throw std::runtime_error("EINTR: Could not connect.");
         break;
       case EISCONN:
-        throw std::runtime_error("Could not connect (EISCONN)");
+        throw std::runtime_error("EISCONN: Could not connect.");
         break;
       case ENETUNREACH:
-        throw std::runtime_error("Could not connect (ENETUNREACH)");
+        throw std::runtime_error("ENETUNREACH: Could not connect.");
         break;
       case ENOTSOCK:
-        throw std::runtime_error("Could not connect (ENOTSOCK)");
+        throw std::runtime_error("ENOTSOCK: Could not connect.");
         break;
       case EPROTOTYPE:
-        throw std::runtime_error("Could not connect (EPROTOTYPE)");
+        throw std::runtime_error("EPROTOTYPE: Could not connect.");
         break;
       case ETIMEDOUT:
-        throw std::runtime_error("Could not connect (ETIMEDOUT)");
+        throw std::runtime_error("ETIMEDOUT: Could not connect.");
         break;
       case EACCES:
-        throw std::runtime_error("Could not connect (EACCES)");
+        throw std::runtime_error("EACCES: Could not connect.");
         break;
       case EADDRINUSE:
-        throw std::runtime_error("Could not connect (EADDRINUSE)");
+        throw std::runtime_error("EADDRINUSE: Could not connect.");
         break;
       case ECONNRESET:
-        throw std::runtime_error("Could not connect (ECONNRESET)");
+        throw std::runtime_error("ECONNRESET: Could not connect.");
         break;
       case EHOSTUNREACH:
-        throw std::runtime_error("Could not connect (EHOSTUNREACH)");
+        throw std::runtime_error("EHOSTUNREACH: Could not connect.");
         break;
       case EINVAL:
-        throw std::runtime_error("Could not connect (EINVAL)");
+        throw std::runtime_error("EINVAL: Could not connect.");
         break;
       case ENAMETOOLONG:
-        throw std::runtime_error("Could not connect (ENAMETOOLONG)");
+        throw std::runtime_error("ENAMETOOLONG: Could not connect.");
         break;
       case ENETDOWN:
-        throw std::runtime_error("Could not connect (ENETDOWN)");
+        throw std::runtime_error("ENETDOWN: Could not connect.");
         break;
       case ENOBUFS:
-        throw std::runtime_error("Could not connect (ENOBUFS)");
+        throw std::runtime_error("ENOBUFS: Could not connect.");
         break;
       case ENOSR:
-        throw std::runtime_error("Could not connect (ENOSR)");
+        throw std::runtime_error("ENOSR: Could not connect.");
         break;
       case EOPNOTSUPP:
-        throw std::runtime_error("Could not connect (EOPNOTSUPP)");
+        throw std::runtime_error("EOPNOTSUPP: Could not connect.");
         break;
       default:
         throw std::runtime_error("Could not connect");
@@ -161,10 +161,9 @@ TCPConnection::TCPConnection() {
 }
 
 int TCPConnection::getbuffersizes() {
-    int res = 0;
     socklen_t optlen = sizeof(sendbuffer);
-    res = getsockopt(sock_d, SOL_SOCKET, SO_SNDBUF, &sendbuffer, &optlen);
-    res = getsockopt(sock_d, SOL_SOCKET, SO_SNDBUF, &sendbuffer, &optlen);
+    getsockopt(sock_d, SOL_SOCKET, SO_SNDBUF, &sendbuffer, &optlen);
+    return sendbuffer;
 }
 
 ssize_t TCPConnection::send(char* buffer, size_t length) {
@@ -213,7 +212,7 @@ ssize_t TCPConnection::send(char* buffer, size_t length) {
             throw std::runtime_error("(send) send: Undefined error");
         }
       } else {
-        return bytes;
+        return 0;
       }
     }
   }
@@ -255,7 +254,7 @@ ssize_t TCPConnection::recv(char *buffer, size_t length) {
         default:
           throw std::runtime_error("(recv) Undefined error");
       } else {
-        return bytes;
+        return 0;
       }
     }
   }

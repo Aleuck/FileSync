@@ -11,6 +11,7 @@
 #include <semaphore.h>
 #include <unistd.h>
 #include <pwd.h>
+#include <libgen.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -27,6 +28,7 @@
 #include <list>
 #include <string>
 #include <iostream>
+#include <fstream>
 
 #define MAXNAME 256
 
@@ -44,6 +46,8 @@
 #define UPLOAD_DENY      4
 #define DOWNLOAD_ACCEPT  5
 #define NOT_FOUND       44
+
+#define ABORT           55
 // structures
 
 #define TRANSFER_OK     10
@@ -63,8 +67,7 @@ typedef struct user {
 
 typedef struct fileinfo {
   char name[MAXNAME];
-  char extension[MAXNAME];
-  char last_modification[MAXNAME];
+  uint32_t last_mod;
   uint32_t size;
 } fileinfo_t;
 
@@ -94,8 +97,7 @@ public:
   File();
   File(fileinfo_t fileinfo);
   std::string name;
-  std::string extension;
-  std::string last_modification;
+  time_t last_mod;
   uint32_t size;
   fileinfo_t serialize();
   void unserialize(fileinfo_t info);
@@ -122,5 +124,6 @@ private:;
 };
 
 const char* get_homedir();
+std::string filename_from_path(std::string filepath);
 
 #endif

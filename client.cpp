@@ -123,6 +123,7 @@ void FileSyncClient::action_handler() {
 
 void FileSyncClient::close() {
   sync_running = false;
+  running = false;
   sync_thread.join();
   tcp.close();
 }
@@ -137,6 +138,7 @@ void FileSyncClient::wait() {
 
 void FileSyncClient::initdir() {
   string homedir = get_homedir();
+  std::cout << "homedir: " + homedir << '\n';
 }
 
 void FileSyncClient::log(std::string msg) {
@@ -146,26 +148,118 @@ void FileSyncClient::log(std::string msg) {
   qlog_sem.post();
 }
 
-
 void FileSyncClient::upload_file(std::string filepath) {
+  // try to open and get stats;
+  struct stat filestats;
+  std::ifstream file(filepath, std::ios::in|std::ios::binary|std::ios::ate);
+  int err = stat(filepath.c_str(), &filestats);
+  if (!file.is_open() || err) {
+    log("Could not open file '" + filepath + "'");
+    return;
+  }
+  // get filename from path
+  std::string filename = filename_from_path(filepath);
+  // prepare file info
+  fileinfo_t fileinfo;
+  strncpy(fileinfo.name, filename.c_str(), MAXNAME);
+  size_t size = file.tellg();
+  fileinfo.last_modification = htonl(filestats.st_mtime);
+  fileinfo.size = htonl(size);
+  // prepare request message
   fs_message_t msg;
-  memset((char*) &msg, 0, sizeof(msg));
-  msg.type = REQUEST_UPLOAD;
+  memset((char*) &msg, 0, sizeof(fs_message_t));
+  msg.type = htonl(REQUEST_UPLOAD);
+  memcpy(msg.content, (char*) &fileinfo, sizeof(fileinfo_t));
+  // send message and get reply
+  try {
+    ssize_t aux;
+    aux = tcp.send((char*) &msg, sizeof(fs_message_t));
+    aux = tcp.recv((char*) &msg, sizeof(fs_message_t));
+    if (aux == 0) {
+      close();
+      return;
+    }
+  }
+  catch (std::runtime_error e) {
+    log(e.what());
+    return;
+  }
+  // verify response
+  msg.type = ntohl(msg.type);
+  switch (msg.type) {
+    case UPLOAD_ACCEPT: {
+      // prepare to send file
+      msg.type = htonl(TRANSFER_OK);
+      file.seekg(0, ios::beg);
+      size_t total_sent = 0;
+      while (!file.eof()) {
+        file.read(msg.content, MSG_LENGTH);
+        try {
+          ssize_t sent = tcp.send((char*) &msg, sizeof(fs_message_t));
+          if (sent == 0) {
+            cloese();
+          }
+        }
+        catch (std::runtime_error e) {
+          log(e.what());
+          return;
+        }
+        total_sent += MSG_LENGTH;
+      }
+    } break;
+    case UPLOAD_DENY: {
+      // log incident and abort
+      std::string reason = msg.content;
+      log("Upload of '" + filename + "' refused by server: " + reason);
+    } break;
+    default: {
+      log("Upload of '" + filename + "' failed. Unrecognized server reply.");
+    } break;
+  }
 }
-void FileSyncClient::download_file(std::string filename) {
+void FileSyncClient::download_file(std::string filepath) {
   fs_message_t msg;
   memset((char*) &msg, 0, sizeof(msg));
-  msg.type = REQUEST_DOWNLOAD;
+  std::string filename = filename_from_path(filepath);
+  msg.type = htonl(REQUEST_DOWNLOAD);
+  std::ofstream file(filepath, std::ofstream::binary);
+  if (!file.is_open()) {
+    log("Couldn't open file '" + filename + "' to write.");
+    return;
+  }
+  msg.type = htonl(REQUEST_DOWNLOAD);
+  strncpy(msg.content, filename.c_str(), MAXNAME);
+  try {
+    ssize_t aux;
+    aux = msg.send((char*) &msg, sizeof(fs_message_t));
+    aux = msg.recv((char*) &msg, sizeof(fs_message_t));
+    if (aux == 0) {
+      close();
+      return;
+    }
+  }
+  catch (std::runtime_error e) {
+    log(e.what());
+    return;
+  }
 }
 void FileSyncClient::delete_file(std::string filename) {
   fs_message_t msg;
   memset((char*) &msg, 0, sizeof(msg));
-  msg.type = REQUEST_DELETE;
+  msg.type = htonl(REQUEST_DELETE);
+  memcpy(msg.content, filename.c_str(), MAXNAME);
+  ssize_t aux;
+  aux = tcp.send((char*) &msg, sizeof(fs_message_t));
+  aux = tcp.recv((char*) &msg, sizeof(fs_message_t));
+  if (aux == 0) {
+    close(); // disconnected
+    return;
+  }
+  msg.type = ntohl(msg.type);
 }
 void FileSyncClient::list_files(std::string filename) {
   fs_message_t msg;
   memset((char*) &msg, 0, sizeof(msg));
-  msg.type = REQUEST_FLIST;
 }
 
 FilesyncAction::FilesyncAction(int type, std::string arg) {

@@ -2,7 +2,7 @@
 #define HEADER_SERVER
 
 #include "util.hpp"
-#include "tcp.hh"
+#include "tcp.hpp"
 
 class FileSyncServer;
 class FileSyncSession;

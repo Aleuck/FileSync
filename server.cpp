@@ -1,7 +1,7 @@
 #include "util.hpp"
 #include "server.hpp"
 #include "serverUI.hpp"
-#include "tcp.hh"
+#include "tcp.hpp"
 #include <mutex>
 
 #define DEFAULT_QUEUE_SIZE 5
@@ -225,6 +225,10 @@ void FileSyncSession::handle_sync(fs_message_t& msg) {
 void FileSyncSession::handle_flist(fs_message_t& msg) {
 }
 void FileSyncSession::handle_upload(fs_message_t& msg) {
+  fileinfo_t fileinfo;
+  memcpy((char*) fileinfo, msg.content, sizeof(fileinfo_t));
+  fileinfo.size = ntohl(fileinfo.size);
+  fileinfo.last_mod = ntohl(fileinfo.last_mod);
 }
 void FileSyncSession::handle_download(fs_message_t& msg) {
 }
