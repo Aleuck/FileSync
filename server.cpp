@@ -1,13 +1,10 @@
-#include "util.hpp"
 #include "server.hpp"
 #include "serverUI.hpp"
-#include "tcp.hpp"
-#include <mutex>
 
 #define DEFAULT_QUEUE_SIZE 5
 #define DEFAULT_PORT 53232
 #define DEFAULT_MAX_CON 2
-#define SERVER_DIR "FileSync_files"
+#define SERVER_DIR "Filesync_dir"
 
 void close_server(int sig);
 
@@ -35,29 +32,19 @@ int main(int argc, char* argv[]) {
     std::cerr << e.what() << '\n';
     exit(0);
   }
-
   // Start interface
-  // std::cout << "starting interface..." << std::endl;
-  // errCode = pthread_create(&thread_ui, NULL, serverUI, (void*) &serv);
-  // if (errCode != 0) {
-  //   std::cout << "Error starting interface." << std::endl;
-  //   exit(1);
-  // }
+  std::cout << "starting interface..." << std::endl;
+  FSServerUI ui(&serv);
+  ui.start();
 
   // pthread_join(thread_ui, NULL);
   serv.wait();
+  ui.close();
   exit(0);
 }
 
 void close_server(int sig) {
   server->stop();
-  server->wait();
-  exit(0);
-  // pthread_kill(thread_ui, sig);
-  // pthread_join(thread_ui, NULL);
-  // std::cout << "Stopping service..." << sig << std::endl;
-  // pthread_kill(thread_server, sig);
-  // pthread_join(thread_server, NULL);
 }
 
 FileSyncServer::FileSyncServer(void) {
@@ -65,69 +52,82 @@ FileSyncServer::FileSyncServer(void) {
   tcp_port = DEFAULT_PORT;
   tcp_queue_size = DEFAULT_QUEUE_SIZE;
   tcp_active = false;
-  running = false;
-  homedir = get_homedir();
-  std::cout << homedir << '\n';
+  thread_active = false;
+  keep_running = false;
+  server_dir = get_homedir() + "/" + SERVER_DIR;
+  std::cout << server_dir << '\n';
 }
 
 void FileSyncServer::start() {
-  tcp.bind(tcp_port);
-  tcp.listen(tcp_queue_size);
-  tcp_active = true;
-  running = true;
-  thread = std::thread(&FileSyncServer::run, this);
+  try {
+    create_dir(server_dir);
+    tcp.bind(tcp_port);
+    tcp.listen(tcp_queue_size);
+    tcp_active = true;
+    keep_running = true;
+    thread_active = true;
+    // thread = std::thread(&FileSyncServer::run, this);
+    int aux = pthread_create(&pthread, NULL, (void* (*)(void*)) &FileSyncServer::run, this);
+  }
+  catch (std::runtime_error e) {
+    log(e.what());
+  }
+}
+
+void FileSyncServer::wait() {
+  if (thread_active) {
+    // thread.join();
+    pthread_join(pthread, NULL);
+    thread_active = false;
+  }
+}
+
+void FileSyncServer::stop() {
+  keep_running = false;
+  pthread_kill(pthread, SIGTSTP);
+  tcp.close();
 }
 
 void FileSyncServer::log(std::string msg) {
   qlogmutex.lock();
   qlog.push(msg);
   qlogmutex.unlock();
-}
-void FileSyncServer::stop() {
-  running = false;
-  tcp.close();
-  sessionsmutex.lock();
-  for (auto i = sessions.begin(); i != sessions.end(); ++i) {
-    (*i)->close();
-  }
-  sessionsmutex.unlock();
+  qlogsemaphore.post();
 }
 
-void FileSyncServer::wait() {
-  thread.join();
-}
-
-void FileSyncServer::run() {
+void* FileSyncServer::run() {
   FileSyncSession* session;
-  std::cerr << "running" << '\n';
-  while (running) {
+  while (keep_running) {
     try {
       session = accept();
       //errCode = pthread_create(thread_session, NULL, run_session, (void*) session);
-      std::cerr << "connection accepted" << '\n';
-      session->thread = std::thread(&FileSyncSession::handle_requests, session);
     }
     catch (std::runtime_error e) {
       std::cerr << e.what() << '\n';
       log(e.what());
       break;
     }
+    session->thread = std::thread(&FileSyncSession::handle_requests, session);
   }
   // server is Stopping
-  if (tcp_active) {
-    tcp.close();
-    tcp_active = false;
-  }
+  tcp.close();
+  return NULL;
 }
 
 FileSyncSession* FileSyncServer::accept() {
   FileSyncSession* session = new FileSyncSession;
-  TCPConnection* conn = tcp.accept();
-  session->tcp = conn;
-  session->active = true;
-  session->user = NULL;
-  session->user = NULL;
-  session->server = this;
+  try {
+    TCPConnection* conn = tcp.accept();
+    session->tcp = conn;
+    session->active = true;
+    session->user = NULL;
+    session->user = NULL;
+    session->server = this;
+  }
+  catch (std::runtime_error e) {
+    delete session;
+    throw e;
+  }
   return session;
 }
 
@@ -151,11 +151,11 @@ FileSyncSession::FileSyncSession(void) {
   user = NULL;
   server = NULL;
 }
-FileSyncSession::~FileSyncSession(void) {
+
+void FileSyncSession::logout() {
   if (active) {
     close();
   }
-  std::cerr << "session closed" << std::endl;
   // remove itself from server's session list
   server->sessionsmutex.lock();
   for (auto s = server->sessions.begin(); s != server->sessions.end();) {
@@ -166,26 +166,32 @@ FileSyncSession::~FileSyncSession(void) {
     }
   }
   server->sessionsmutex.unlock();
-  // remove itself from user's session list
-  user->sessionsmutex.lock();
-  for (auto s = user->sessions.begin(); s != user->sessions.end();) {
-    if (*s == this) {
-      std::cerr << "deleting session from user list" << std::endl;
-      user->sessions.erase(s);
+  if (user) {
+    user->sessionsmutex.lock();
+    for (auto s = user->sessions.begin(); s != user->sessions.end();) {
+      if (*s == this) {
+        std::cerr << "deleting session from user list" << std::endl;
+        user->sessions.erase(s);
+        break;
+      }
     }
+    user->sessionsmutex.unlock();
   }
-  user->sessionsmutex.unlock();
+}
+
+FileSyncSession::~FileSyncSession(void) {
   delete tcp;
 }
 
 void FileSyncSession::handle_requests() {
   fs_message_t msg;
-  while (active && server->running) {
+  while (active && server->keep_running) {
     memset((char*) &msg, 0, sizeof(msg));
     try {
       ssize_t aux = tcp->recv((char*) &msg, sizeof(msg));
       if (aux == 0) {
         // log("connection closed.");
+        active = false;
         break;
       }
     }
@@ -218,6 +224,7 @@ void FileSyncSession::handle_requests() {
         break;
     }
   }
+  logout();
   tcp->close();
 }
 
@@ -266,7 +273,6 @@ void FileSyncSession::handle_delete(fs_message_t& msg) {
 void FileSyncSession::close() {
   active = false;
   tcp->close();
-  thread.join();
 }
 
 ConnectedUser::ConnectedUser(void) {}

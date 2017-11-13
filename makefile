@@ -9,7 +9,7 @@ all: server client
 server: server.o serverUI.o userInterface.o util.o tcp.o
 	$(CC) -o $@ $^ $(LFLAGS)
 
-client: client.o serverUI.o userInterface.o util.o tcp.o
+client: client.o clientUI.o userInterface.o util.o tcp.o
 	$(CC) -o $@ $^ $(LFLAGS)
 
 testtcp: testtcp.o util.o tcp.o

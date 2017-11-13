@@ -42,6 +42,7 @@ public:
   TCPServer(void);
   void bind(int port);
   void listen(int queue_size);
+  int poll(int req, int time);
   TCPConnection* accept();
 };
 

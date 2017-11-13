@@ -126,10 +126,14 @@ void FileSyncClient::action_handler() {
 }
 
 void FileSyncClient::close() {
+  if (sync_running) {
   sync_running = false;
   running = false;
   tcp.close();
   sync_thread.join();
+  } else {
+    tcp.close();
+  }
 }
 void FileSyncClient::sync() {
   while (sync_running) {

@@ -1,22 +1,25 @@
 #include "util.hpp"
-#include "userInterface.hpp"
-#include "clientUi.hpp"
 #include "client.hpp"
+#include "clientUI.hpp"
 
 void mainScreen();
 
 using namespace std;
 
-void* serverUI(void* arg) {
-  startUI();
-  mainScreen();
-  endUI();
-  return NULL;
+void FSClientUI::start() {
+  init();
+  running = true;
+  thread = std::thread(&FSClientUI::run, this);
 }
 
-void mainScreen() {
+void FSClientUI::close() {
+  running = false;
+  thread.join();
+}
+
+void FSClientUI::run() {
   int ch;
-  for (;;) {
+  while (running) {
     if ((ch = getch()) == ERR) {
       // no input
     } else {
@@ -30,4 +33,5 @@ void mainScreen() {
       }
     }
   }
+  end();
 }

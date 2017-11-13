@@ -9,17 +9,21 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "tcp.hpp"
 
 using namespace std;
 
 TCPSock::TCPSock(void) {
+  sock_d = 0;
   memset((char *) &addr, 0, sizeof(addr));
 }
 
 void TCPSock::close() {
-  ::close(sock_d);
+  if (sock_d >= 0) {
+    ::close(sock_d);
+  }
 }
 
 TCPServer::TCPServer(void) {
@@ -28,6 +32,7 @@ TCPServer::TCPServer(void) {
   if (sock_d <= 0) {
     throw std::runtime_error("Could not create socket.");
   }
+  // fcntl(sock_d, F_SETFL, fcntl(sock_d, F_GETFL, 0) | O_NONBLOCK);
 }
 
 void TCPServer::bind(int port) {
@@ -51,11 +56,11 @@ TCPConnection* TCPServer::accept() {
   TCPConnection *con = new TCPConnection;
   socklen_t sock_size;
   sock_size = sizeof(con->addr);
-
   con->sock_d = ::accept(sock_d, (struct sockaddr *) &(con->addr), &sock_size);
   if (con->sock_d <= 0) {
     delete con;
     throw std::runtime_error("Could not accept connection");
+    return NULL;
   }
   return con;
 }
@@ -63,7 +68,7 @@ TCPConnection* TCPServer::accept() {
 TCPClient::TCPClient(void) {
   // create TCP socket
   sock_d = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
-  if (sock_d < 0) {
+  if (sock_d <= 0) {
     throw std::runtime_error("Could not create socket.");
   }
 }

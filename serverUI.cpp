@@ -1,31 +1,37 @@
-#include "util.hpp"
-#include "userInterface.hpp"
-#include "serverUI.hpp"
 #include "server.hpp"
+#include "util.hpp"
+#include "serverUI.hpp"
 
 void mainScreen();
 void close_serverUI(int sig);
 
 using namespace std;
 
-void* serverUI(void* arg) {
-  signal(SIGINT, close_serverUI);
-  startUI();
-  mainScreen();
-  endUI();
-  return NULL;
+FSServerUI::FSServerUI(FileSyncServer* serv) {
+  server = serv;
 }
 
-void mainScreen() {
+void FSServerUI::start() {
+  init();
+  running = true;
+  thread = std::thread(&FSServerUI::run, this);
+}
+
+void FSServerUI::close() {
+  running = false;
+  thread.join();
+}
+
+void FSServerUI::run() {
   int ch;
   int h, w;
   //WINDOW* win = newwin();
-  for (;;) {
+  while (running) {
     getmaxyx(stdscr, h, w);
-    refresh();
-    move(h-1,w-25);
+    move(1,1);
     attron(A_STANDOUT);
-    printw("ch: %d h: %3d, w: %3d", ch, h, w);
+    printw("ch: %2x h: %3d, w: %3d ", ch, h, w);
+    refresh();
     if ((ch = getch()) == ERR) {
       // no input
     } else {
@@ -33,13 +39,12 @@ void mainScreen() {
       switch (ch) {
         case 'q':
         case 'Q':
-          return;
+          server->stop();
+          break;
+        default:
+          break;
       }
     }
   }
-}
-
-void close_serverUI(int sig){
-  endUI();
-  exit(0);
+  end();
 }

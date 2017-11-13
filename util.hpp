@@ -83,6 +83,7 @@ class User;
 class File;
 class Transfer;
 class Semaphore;
+class FSClock;
 
 class User {
 public:
@@ -117,13 +118,22 @@ public:
   ~Semaphore(void);
   int post();
   int wait();
+  int trywait();
   int destroy();
 private:;
   bool initialized;
   sem_t sem;
 };
 
-const char* get_homedir();
-std::string filename_from_path(std::string filepath);
+class FSClock {
+public:
+  FSClock(void);
+  uint32_t gettime();
+private:
+  uint32_t offset;
+};
 
+std::string get_homedir();
+std::string filename_from_path(std::string filepath);
+void create_dir(std::string path);
 #endif

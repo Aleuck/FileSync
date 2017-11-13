@@ -21,20 +21,26 @@ public:
   void wait();
   void log(std::string);
 protected:
-  void run();
+  void* run();
+  bool keep_running;
+  bool thread_active;
+  // std::thread thread;
+  pthread_t pthread;
   TCPServer tcp;
   unsigned int max_con;
   int tcp_port;
   int tcp_queue_size;
   bool tcp_active;
-  bool running;
-  std::string homedir;
-  std::thread thread;
+  // clock for time synchronization
+  FSClock clock;
+  std::string server_dir;
   std::map<std::string, ConnectedUser> users;
   std::mutex usersmutex;
   std::list<FileSyncSession*> sessions;
   std::mutex sessionsmutex;
+  // log events
   std::queue<std::string> qlog;
+  Semaphore qlogsemaphore;
   std::mutex qlogmutex;
   std::queue<std::string> qerrorlog;
   std::mutex qerrorlogmutex;
@@ -53,9 +59,11 @@ public:
   void handle_upload(fs_message_t& msg);
   void handle_download(fs_message_t& msg);
   void handle_delete(fs_message_t& msg);
+  void logout();
 protected:
   FileSyncSession(void);
   void _run();
+  bool keep_running;
   std::thread thread;
   TCPConnection* tcp;
   ConnectedUser* user;

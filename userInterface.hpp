@@ -3,7 +3,14 @@
 
 #include <ncurses.h>
 
-void startUI();
-void endUI();
+
+class FilesyncUI;
+
+class FilesyncUI{
+protected:
+  void init();
+  void end();
+  void getScreenSize(int &h, int &w);
+};
 
 #endif
