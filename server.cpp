@@ -64,6 +64,14 @@ int FileSyncServer::countSessions() {
   return count;
 }
 
+int FileSyncServer::countUsers() {
+  usersmutex.lock();
+  int count = users.size();
+  usersmutex.unlock();
+  return count;
+}
+
+
 void FileSyncServer::start() {
   try {
     int aux;
@@ -107,7 +115,6 @@ void* FileSyncServer::run() {
     session = NULL;
     try {
       session = accept();
-      //errCode = pthread_create(thread_session, NULL, run_session, (void*) session);
     }
     catch (std::runtime_error e) {
       // std::cerr << e.what() << '\n';
@@ -115,6 +122,9 @@ void* FileSyncServer::run() {
       continue;
     }
     if (session != NULL) {
+      sessionsmutex.lock();
+      sessions.push_back(session);
+      sessionsmutex.unlock();
       session->thread = std::thread(&FileSyncSession::handle_requests, session);
     }
   }
@@ -165,6 +175,11 @@ FileSyncSession::FileSyncSession(void) {
 }
 
 void FileSyncSession::logout() {
+  if (user) {
+    server->log("session of `" + user->userid + "` logging out");
+  } else {
+    server->log("anonymous session logging off");
+  }
   if (active) {
     close();
   }
@@ -202,13 +217,13 @@ void FileSyncSession::handle_requests() {
     try {
       ssize_t aux = tcp->recv((char*) &msg, sizeof(msg));
       if (aux == 0) {
-        // log("connection closed.");
+        server->log("connection closed.");
         active = false;
         break;
       }
     }
     catch (std::runtime_error e) {
-      // log("problem with connection");
+      server->log("problem with connection");
       break;
     }
     msg.type = ntohl(msg.type);
@@ -244,7 +259,7 @@ void FileSyncSession::handle_login(fs_message_t& msg) {
   fs_message_t resp;
   msg.content[MAXNAME-1] = 0;
   std::string uid(msg.content);
-  server->log("login: " + uid);
+  server->log("new login: " + uid);
   server->usersmutex.lock();
   server->users[uid].userid = uid;
   memset(resp.content, 0, sizeof(resp.content));
@@ -254,6 +269,7 @@ void FileSyncSession::handle_login(fs_message_t& msg) {
     strncpy(resp.content, uid.c_str(), MAXNAME);
     resp.type = LOGIN_ACCEPT;
     server->users[uid].sessions.push_back(this);
+    user = &server->users[uid];
   }
   server->usersmutex.unlock();
   resp.type = htonl(resp.type);

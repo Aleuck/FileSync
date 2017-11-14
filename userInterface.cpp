@@ -1,9 +1,11 @@
 #include "userInterface.hpp"
+#include <iostream>
 
 using namespace std;
 
 
 void FilesyncUI::init() {
+  // cerr <<  << " color pairs\n";
   initscr(); // initialize ncurses
   cbreak(); // disable input buffering
   noecho(); // dont echo typed chars

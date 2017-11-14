@@ -95,7 +95,7 @@ public:
 
 class File {
 public:
-  File();
+  File(void);
   File(fileinfo_t fileinfo);
   std::string name;
   time_t last_mod;
@@ -113,9 +113,10 @@ public:
 
 class Semaphore {
 public:
-  Semaphore(int value);
   Semaphore(void);
+  Semaphore(int value);
   ~Semaphore(void);
+  void init(int value);
   int post();
   int wait();
   int trywait();

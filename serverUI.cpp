@@ -30,7 +30,14 @@ void FSServerUI::run() {
     getmaxyx(stdscr, h, w);
     move(1,1);
     attron(A_STANDOUT);
-    printw("sessions: %2d h: %3d, w: %3d ", server->countSessions(), h, w);
+    printw("sessions: %2d users: %d, colors: %3d ", server->countSessions(), server->countUsers(), COLOR_PAIRS);
+    server->qlogmutex.lock();
+    int lines = 0;
+    for (auto ii = server->qlog.begin(); ii != server->qlog.end() && lines < 10; ++ii) {
+      move(12-(lines++),1);
+      printw((*ii).c_str());
+    }
+    server->qlogmutex.unlock();
     refresh();
     if ((ch = getch()) == ERR) {
       // no input

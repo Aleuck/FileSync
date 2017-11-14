@@ -21,8 +21,10 @@ public:
   void wait();
   void log(std::string);
   int countSessions();
+  int countUsers();
+  std::list<std::string> qlog;
   std::mutex qlogmutex;
-  std::queue<std::string> qerrorlog;
+  std::list<std::string> qerrorlog;
   std::mutex qerrorlogmutex;
 protected:
   void* run();
@@ -43,15 +45,15 @@ protected:
   std::list<FileSyncSession*> sessions;
   std::mutex sessionsmutex;
   // log events
-  std::list<std::string> qlog;
   Semaphore qlogsemaphore;
 };
 
 class FileSyncSession {
 friend class FileSyncServer;
 public:
-  void close();
+  FileSyncSession(void);
   ~FileSyncSession(void);
+  void close();
   void handle_requests();
   void handle_login(fs_message_t& msg);
   void handle_logout(fs_message_t& msg);
@@ -62,7 +64,6 @@ public:
   void handle_delete(fs_message_t& msg);
   void logout();
 protected:
-  FileSyncSession(void);
   void _run();
   bool keep_running;
   std::thread thread;
@@ -75,9 +76,9 @@ protected:
 class ConnectedUser {
 friend class FileSyncSession;
 public:
+  ConnectedUser(void);
   std::string userid;
   std::string userdir;
-  ConnectedUser(void);
 protected:
   std::list<FileSyncSession*> sessions;
   std::mutex sessionsmutex;

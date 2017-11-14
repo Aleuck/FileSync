@@ -31,14 +31,18 @@ void User::unserialize(user_t info) {
 }
 
 Semaphore::Semaphore(int value) {
-  sem_init(&sem, 0, value);
-  initialized = true;
+  init(value);
 }
 
 Semaphore::Semaphore(void) {
-  Semaphore(0);
+  init(0);
 }
 
+void Semaphore::init(int value) {
+  std::cerr << "semaphore init" << '\n';
+  sem_init(&sem, 0, value);
+  initialized = true;
+}
 
 Semaphore::~Semaphore(void) {
   if (destroy() != 0) {

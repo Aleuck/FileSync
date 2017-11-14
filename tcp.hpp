@@ -11,12 +11,12 @@ class TCPConnection;
 
 class TCPSock {
 public:
+  TCPSock(void);
   std::string getAddr();
   int getPort();
   void close();
   void shutdown();
 protected:
-  TCPSock(void);
   struct sockaddr_in addr;
   int sock_d;
 };
@@ -25,6 +25,7 @@ class TCPConnection : public TCPSock {
 friend class TCPServer;
 friend class TCPClient;
 public:
+  TCPConnection(void);
   ssize_t send(char* buffer, size_t length);
   ssize_t recv(char* buffer, size_t length);
   // void lock();
@@ -32,7 +33,6 @@ public:
 protected:
   bool isconnected;
 private:
-  TCPConnection(void);
   size_t sendbuffer;
   size_t recvbuffer;
   int getbuffersizes();
