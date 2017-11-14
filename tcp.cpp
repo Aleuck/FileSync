@@ -26,6 +26,10 @@ void TCPSock::close() {
   }
 }
 
+void TCPSock::shutdown() {
+  ::shutdown(sock_d, SHUT_RD);
+}
+
 TCPServer::TCPServer(void) {
   // create TCP socket
   sock_d = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
@@ -59,8 +63,11 @@ TCPConnection* TCPServer::accept() {
   con->sock_d = ::accept(sock_d, (struct sockaddr *) &(con->addr), &sock_size);
   if (con->sock_d <= 0) {
     delete con;
+    if (errno == EINTR) return NULL;
+    if (errno == EINVAL) return NULL;
+    if (errno == EAGAIN) return NULL;
+    if (errno == EWOULDBLOCK) return NULL;
     throw std::runtime_error("Could not accept connection");
-    return NULL;
   }
   return con;
 }

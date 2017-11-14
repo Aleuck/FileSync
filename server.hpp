@@ -20,12 +20,16 @@ public:
   void stop();
   void wait();
   void log(std::string);
+  int countSessions();
+  std::mutex qlogmutex;
+  std::queue<std::string> qerrorlog;
+  std::mutex qerrorlogmutex;
 protected:
   void* run();
   bool keep_running;
   bool thread_active;
-  // std::thread thread;
-  pthread_t pthread;
+  std::thread thread;
+  // pthread_t pthread;
   TCPServer tcp;
   unsigned int max_con;
   int tcp_port;
@@ -39,11 +43,8 @@ protected:
   std::list<FileSyncSession*> sessions;
   std::mutex sessionsmutex;
   // log events
-  std::queue<std::string> qlog;
+  std::list<std::string> qlog;
   Semaphore qlogsemaphore;
-  std::mutex qlogmutex;
-  std::queue<std::string> qerrorlog;
-  std::mutex qerrorlogmutex;
 };
 
 class FileSyncSession {

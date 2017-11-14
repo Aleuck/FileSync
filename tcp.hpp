@@ -14,6 +14,7 @@ public:
   std::string getAddr();
   int getPort();
   void close();
+  void shutdown();
 protected:
   TCPSock(void);
   struct sockaddr_in addr;

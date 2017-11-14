@@ -30,7 +30,7 @@ void FSServerUI::run() {
     getmaxyx(stdscr, h, w);
     move(1,1);
     attron(A_STANDOUT);
-    printw("ch: %2x h: %3d, w: %3d ", ch, h, w);
+    printw("sessions: %2d h: %3d, w: %3d ", server->countSessions(), h, w);
     refresh();
     if ((ch = getch()) == ERR) {
       // no input

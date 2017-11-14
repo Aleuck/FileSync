@@ -55,19 +55,26 @@ FileSyncServer::FileSyncServer(void) {
   thread_active = false;
   keep_running = false;
   server_dir = get_homedir() + "/" + SERVER_DIR;
-  std::cout << server_dir << '\n';
+}
+
+int FileSyncServer::countSessions() {
+  qlogmutex.lock();
+  int count = sessions.size();
+  qlogmutex.unlock();
+  return count;
 }
 
 void FileSyncServer::start() {
   try {
+    int aux;
     create_dir(server_dir);
     tcp.bind(tcp_port);
     tcp.listen(tcp_queue_size);
     tcp_active = true;
     keep_running = true;
     thread_active = true;
-    // thread = std::thread(&FileSyncServer::run, this);
-    int aux = pthread_create(&pthread, NULL, (void* (*)(void*)) &FileSyncServer::run, this);
+    thread = std::thread(&FileSyncServer::run, this);
+    // aux = pthread_create(&pthread, NULL, (void* (*)(void*)) &FileSyncServer::run, this);
   }
   catch (std::runtime_error e) {
     log(e.what());
@@ -76,21 +83,20 @@ void FileSyncServer::start() {
 
 void FileSyncServer::wait() {
   if (thread_active) {
-    // thread.join();
-    pthread_join(pthread, NULL);
+    thread.join();
+    // pthread_join(pthread, NULL);
     thread_active = false;
   }
 }
 
 void FileSyncServer::stop() {
   keep_running = false;
-  pthread_kill(pthread, SIGTSTP);
-  tcp.close();
+  tcp.shutdown();
 }
 
 void FileSyncServer::log(std::string msg) {
   qlogmutex.lock();
-  qlog.push(msg);
+  qlog.push_front(msg);
   qlogmutex.unlock();
   qlogsemaphore.post();
 }
@@ -98,16 +104,19 @@ void FileSyncServer::log(std::string msg) {
 void* FileSyncServer::run() {
   FileSyncSession* session;
   while (keep_running) {
+    session = NULL;
     try {
       session = accept();
       //errCode = pthread_create(thread_session, NULL, run_session, (void*) session);
     }
     catch (std::runtime_error e) {
-      std::cerr << e.what() << '\n';
+      // std::cerr << e.what() << '\n';
       log(e.what());
-      break;
+      continue;
     }
-    session->thread = std::thread(&FileSyncSession::handle_requests, session);
+    if (session != NULL) {
+      session->thread = std::thread(&FileSyncSession::handle_requests, session);
+    }
   }
   // server is Stopping
   tcp.close();
@@ -115,9 +124,13 @@ void* FileSyncServer::run() {
 }
 
 FileSyncSession* FileSyncServer::accept() {
-  FileSyncSession* session = new FileSyncSession;
+  FileSyncSession* session = NULL;
   try {
     TCPConnection* conn = tcp.accept();
+    if (conn == NULL) {
+      return NULL;
+    }
+    session = new FileSyncSession;
     session->tcp = conn;
     session->active = true;
     session->user = NULL;
@@ -125,7 +138,6 @@ FileSyncSession* FileSyncServer::accept() {
     session->server = this;
   }
   catch (std::runtime_error e) {
-    delete session;
     throw e;
   }
   return session;
@@ -160,7 +172,7 @@ void FileSyncSession::logout() {
   server->sessionsmutex.lock();
   for (auto s = server->sessions.begin(); s != server->sessions.end();) {
     if (*s == this) {
-      std::cerr << "deleting session from server list" << std::endl;
+      // std::cerr << "deleting session from server list" << std::endl;
       server->sessions.erase(s);
       break;
     }
@@ -170,7 +182,7 @@ void FileSyncSession::logout() {
     user->sessionsmutex.lock();
     for (auto s = user->sessions.begin(); s != user->sessions.end();) {
       if (*s == this) {
-        std::cerr << "deleting session from user list" << std::endl;
+        // std::cerr << "deleting session from user list" << std::endl;
         user->sessions.erase(s);
         break;
       }
@@ -232,10 +244,9 @@ void FileSyncSession::handle_login(fs_message_t& msg) {
   fs_message_t resp;
   msg.content[MAXNAME-1] = 0;
   std::string uid(msg.content);
-  std::cerr << "login: " << uid << '\n';
+  server->log("login: " + uid);
   server->usersmutex.lock();
-  std::cerr << "new user" << '\n';
-  server->users[uid].userid.assign(uid);
+  server->users[uid].userid = uid;
   memset(resp.content, 0, sizeof(resp.content));
   if (server->users[uid].sessions.size() >= server->max_con) {
     resp.type = LOGIN_DENY;
