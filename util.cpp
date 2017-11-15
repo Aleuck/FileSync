@@ -84,7 +84,7 @@ int Semaphore::trywait() {
     default:
       throw runtime_error("Undefined sempaphore error.");
   }
-  return err;
+  return 0;
 }
 
 
@@ -182,4 +182,16 @@ std::string filename_from_path(std::string filepath) {
   strncpy(cfilepath, filepath.c_str(), MAXNAME);
   std::string filename = basename(cfilepath);
   return filename;
+}
+
+std::string flocaltime(std::string format, time_t t) {
+  struct tm tm;
+  // using localtime_r() instead of localtime()
+  // localtime() is not thread safe
+  // but localtime_r() is not portable
+  localtime_r(&t, &tm);
+  char formated[MAXNAME];
+  strftime (formated, MAXNAME, format.c_str(), &tm);
+  std::string fdate = formated;
+  return fdate;
 }

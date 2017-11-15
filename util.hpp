@@ -74,8 +74,9 @@ typedef struct fileinfo {
 typedef struct filesync_action {
   uint32_t id;
   uint32_t type;
+  uint32_t timestamp;
+  uint32_t sid;
   char name[MAXNAME];
-  char extension[MAXNAME];
 } fs_action_t;
 
 // classes
@@ -119,6 +120,12 @@ public:
   void init(int value);
   int post();
   int wait();
+  /* -------------------
+  Semaphore::trywait() throws std::runtime_error
+  returns 1 if semaphore was already locked
+  returns 0 if semaphore was successfully locked
+  returns -1 if function was interrupted by signal
+  ---------------------- */
   int trywait();
   int destroy();
 private:;
@@ -133,8 +140,8 @@ public:
 private:
   uint32_t offset;
 };
-
 std::string get_homedir();
 std::string filename_from_path(std::string filepath);
+std::string flocaltime(std::string format, time_t t);
 void create_dir(std::string path);
 #endif

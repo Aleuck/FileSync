@@ -104,7 +104,7 @@ void FileSyncServer::stop() {
 
 void FileSyncServer::log(std::string msg) {
   qlogmutex.lock();
-  qlog.push_front(msg);
+  qlog.push_front(flocaltime("%F %T : ", time(NULL)) + msg);
   qlogmutex.unlock();
   qlogsemaphore.post();
 }
@@ -174,18 +174,23 @@ FileSyncSession::FileSyncSession(void) {
   server = NULL;
 }
 
+FileSyncSession::~FileSyncSession(void) {
+  delete tcp;
+}
+
 void FileSyncSession::logout() {
   if (user) {
     server->log("session of `" + user->userid + "` logging out");
   } else {
-    server->log("anonymous session logging off");
+    server->log("session logging out");
   }
   if (active) {
     close();
   }
+
   // remove itself from server's session list
   server->sessionsmutex.lock();
-  for (auto s = server->sessions.begin(); s != server->sessions.end();) {
+  for (auto s = server->sessions.begin(); s != server->sessions.end(); ++s) {
     if (*s == this) {
       // std::cerr << "deleting session from server list" << std::endl;
       server->sessions.erase(s);
@@ -193,9 +198,11 @@ void FileSyncSession::logout() {
     }
   }
   server->sessionsmutex.unlock();
+
+  server->usersmutex.lock();
   if (user) {
     user->sessionsmutex.lock();
-    for (auto s = user->sessions.begin(); s != user->sessions.end();) {
+    for (auto s = user->sessions.begin(); s != user->sessions.end(); ++s) {
       if (*s == this) {
         // std::cerr << "deleting session from user list" << std::endl;
         user->sessions.erase(s);
@@ -204,10 +211,12 @@ void FileSyncSession::logout() {
     }
     user->sessionsmutex.unlock();
   }
-}
 
-FileSyncSession::~FileSyncSession(void) {
-  delete tcp;
+  std::string uid = user->userid;
+  if (user->sessions.size() == 0) {
+    server->users.erase(uid);
+  }
+  server->usersmutex.unlock();
 }
 
 void FileSyncSession::handle_requests() {
@@ -253,6 +262,9 @@ void FileSyncSession::handle_requests() {
   }
   logout();
   tcp->close();
+  server = NULL;
+  thread.detach();
+  delete this;
 }
 
 void FileSyncSession::handle_login(fs_message_t& msg) {
@@ -270,6 +282,7 @@ void FileSyncSession::handle_login(fs_message_t& msg) {
     resp.type = LOGIN_ACCEPT;
     server->users[uid].sessions.push_back(this);
     user = &server->users[uid];
+    sid = ++user->last_sid;
   }
   server->usersmutex.unlock();
   resp.type = htonl(resp.type);
@@ -302,4 +315,7 @@ void FileSyncSession::close() {
   tcp->close();
 }
 
-ConnectedUser::ConnectedUser(void) {}
+ConnectedUser::ConnectedUser(void) {
+  last_action = 0;
+  last_sid = 0;
+}

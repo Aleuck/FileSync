@@ -30,29 +30,30 @@ public:
   void set_dir_prefix(std::string dir_prefix);
   void enqueue_action(FilesyncAction action);
   void start();
-  void close();
+  void stop();
   void wait();
   void initdir();
-  std::string userid;
   void log(std::string msg);
+  std::string userid;
+  std::list<std::string> qlog;
+  std::mutex qlog_mutex;
+  Semaphore qlog_sem;
 private:
   void sync();
   void action_handler();
+  std::string userdir_prefix;
+  std::string userdir;
   bool sync_running;
   bool running;
-  std::thread sync_thread;
+  std::thread sync_thread; // thread to watch userdir
+  std::thread ah_thread;  // thread to handle actions
   std::map<std::string, File> files;
   std::mutex filesmutex;
   TCPClient tcp;
-  std::mutex tcpmutex;
-  std::string userdir_prefix;
+  uint32_t last_action;
   std::queue<FilesyncAction> actions_queue;
   std::mutex actions_mutex;
-  uint32_t last_action;
   Semaphore actions_sem;
-  std::queue<std::string> qlog;
-  std::mutex qlog_mutex;
-  Semaphore qlog_sem;
   int connection;    // tcp socket
   bool connected;
 };

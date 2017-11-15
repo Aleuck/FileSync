@@ -24,6 +24,7 @@ public:
   int countUsers();
   std::list<std::string> qlog;
   std::mutex qlogmutex;
+  Semaphore qlogsemaphore;
   std::list<std::string> qerrorlog;
   std::mutex qerrorlogmutex;
 protected:
@@ -45,7 +46,6 @@ protected:
   std::list<FileSyncSession*> sessions;
   std::mutex sessionsmutex;
   // log events
-  Semaphore qlogsemaphore;
 };
 
 class FileSyncSession {
@@ -64,6 +64,7 @@ public:
   void handle_delete(fs_message_t& msg);
   void logout();
 protected:
+  uint32_t sid;
   void _run();
   bool keep_running;
   std::thread thread;
@@ -80,8 +81,12 @@ public:
   std::string userid;
   std::string userdir;
 protected:
+  uint32_t last_sid;
   std::list<FileSyncSession*> sessions;
   std::mutex sessionsmutex;
+  std::list<fs_action_t> actions;
+  std::mutex actionsmutex;
+  uint32_t last_action;
 };
 
 #endif
