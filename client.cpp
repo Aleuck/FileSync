@@ -45,6 +45,7 @@ int main(int argc, char* argv[]) {
     std::cerr << clnt.userid << '\n';
   }
   clnt.initdir(); // create dir if needed
+  clnt.enqueue_action(FilesyncAction(REQUEST_FLIST,""));
   clnt.start(); // starts client threads
   // initate interface
   FSClientUI ui(&clnt);
@@ -104,6 +105,7 @@ void FileSyncClient::initdir() {
   string homedir = get_homedir();
   userdir = homedir + "/" + userdir_prefix + userid;
   create_dir(userdir);
+  files = ls_files(userdir);
 }
 
 void FileSyncClient::log(std::string msg) {
@@ -146,10 +148,10 @@ void FileSyncClient::action_handler() {
     actions_mutex.unlock();
     switch (action.type) {
       case REQUEST_SYNC:
-        get_update(action.arg);
+        get_update();
         break;
       case REQUEST_FLIST:
-        list_files(action.arg);
+        list_files();
         break;
       case REQUEST_UPLOAD:
         upload_file(action.arg);
@@ -282,7 +284,7 @@ void FileSyncClient::wait() {
   sync_thread.join();
 }
 
-void FileSyncClient::get_update(std::string filepath) {
+void FileSyncClient::get_update() {
   // request updates
   fs_message_t msg;
   fs_action_t *update = (fs_action_t *) msg.content;
@@ -482,7 +484,7 @@ void FileSyncClient::delete_file(std::string filename) {
   msg.type = ntohl(msg.type);
 }
 
-void FileSyncClient::list_files(std::string filename) {
+void FileSyncClient::list_files() {
   fs_message_t msg;
   memset((char*) &msg, 0, sizeof(msg));
   msg.type = htonl(REQUEST_FLIST);
@@ -492,13 +494,26 @@ void FileSyncClient::list_files(std::string filename) {
 
   uint32_t *net_count = (uint32_t *) msg.content;
   uint32_t count = ntohl(*net_count);
-
+  std::map<std::string, fileinfo_t> serverfiles;
   for (uint32_t i = 0; i < count; ++i) {
     if (!recv_message(msg)) return;
     fileinfo_t *info = (fileinfo_t *) msg.content;
     info->last_mod = ntohl(info->last_mod);
     info->size = ntohl(info->size);
     std::string filename(info->name);
+    serverfiles[filename] = *info;
+  }
+  for (auto i = serverfiles.begin(); i != serverfiles.end(); ++i) {
+    if (!files.count(i->first)) {
+      std::string filepath = userdir + "/" + i->first;
+      enqueue_action(FilesyncAction(REQUEST_DOWNLOAD, filepath));
+    }
+  }
+  for (auto i = files.begin(); i != files.end(); ++i) {
+    if (!serverfiles.count(i->first)) {
+      std::string filepath = userdir + "/" + i->first;
+      enqueue_action(FilesyncAction(REQUEST_UPLOAD, filepath));
+    }
   }
 }
 

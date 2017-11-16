@@ -280,7 +280,21 @@ void FileSyncSession::handle_login(fs_message_t& msg) {
     server->users[uid].sessions.push_back(this);
 
     if (newuser) {
+      log("loading user");
+
+      // create userdir if needed
       create_dir(user->userdir);
+
+      // get files already in server dir
+      user->files = ls_files(user->userdir);
+      if (user->files.size() > 0) {
+        log("initial files:");
+        for (auto i = user->files.begin(); i != user->files.end(); ++i) {
+          log(i->first);
+        }
+      } else {
+        log("server userdir is empty");
+      }
     }
 
     uint32_t last_action = htonl(user->last_action);

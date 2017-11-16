@@ -24,13 +24,13 @@ public:
   void connect(std::string address, int port);
   bool login(std::string userid);
   void upload_file(std::string filepath);
-  void download_file(std::string filename);
+  void download_file(std::string filepath);
   void delete_file(std::string filename);
-  void list_files(std::string filename);
+  void list_files();
   void set_dir_prefix(std::string dir_prefix);
   void enqueue_action(FilesyncAction action);
   void process_update(fs_action_t &update);
-  void get_update(std::string filepath);
+  void get_update();
   void start();
   void stop();
   void wait();
