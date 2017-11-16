@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
     std::cerr << clnt.userid << '\n';
   }
   clnt.initdir(); // create dir if needed
-  clnt.enqueue_action(FilesyncAction(REQUEST_FLIST,""));
+  // clnt.enqueue_action(FilesyncAction(REQUEST_FLIST,""));
   clnt.start(); // starts client threads
   // initate interface
   FSClientUI ui(&clnt);
