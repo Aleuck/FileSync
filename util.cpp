@@ -197,7 +197,7 @@ bool cp(std::string from_path, std::string to_path) {
     if (aux < 0) {
       close(source);
       close(dest);
-      remove(to_path.c_str);
+      remove(to_path.c_str());
       return false;
     }
     total_copied += aux;
