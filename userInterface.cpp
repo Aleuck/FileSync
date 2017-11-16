@@ -11,6 +11,7 @@ void FilesyncUI::init() {
   noecho(); // dont echo typed chars
   keypad(stdscr, TRUE); // capture special chars
   nodelay(stdscr, TRUE);
+  curs_set(0);
   if (has_colors()) {
     start_color();
     init_pair(1, COLOR_WHITE,   COLOR_BLACK);
