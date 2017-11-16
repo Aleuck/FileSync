@@ -6,7 +6,6 @@
 class FSClientUI;
 class FSClientUI : public FilesyncUI {
 public:
-  FSClientUI(void);
   FSClientUI(FileSyncClient *client);
   void start();
   void close();

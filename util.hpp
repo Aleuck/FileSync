@@ -152,4 +152,5 @@ std::string filename_from_path(std::string filepath);
 std::string dirname_from_path(std::string filepath);
 std::string flocaltime(std::string format, time_t t);
 void create_dir(std::string path);
+bool cp(std::string from_path, std::string to_path);
 #endif

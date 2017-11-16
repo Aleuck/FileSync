@@ -1,5 +1,9 @@
 #include "util.hpp"
-
+#include <sys/sendfile.h>  // sendfile
+#include <fcntl.h>         // open
+#include <unistd.h>        // close
+#include <sys/stat.h>      // fstat
+#include <sys/types.h>     // fstat
 using namespace std;
 
 File::File(fileinfo_t fileinfo) {
@@ -39,7 +43,6 @@ Semaphore::Semaphore(void) {
 }
 
 void Semaphore::init(int value) {
-  std::cerr << "semaphore init" << '\n';
   sem_init(&sem, 0, value);
   initialized = true;
 }
@@ -177,6 +180,33 @@ void create_dir(std::string path) {
   }
 }
 
+bool cp(std::string from_path, std::string to_path) {
+  int source = open(from_path.c_str(), O_RDONLY, 0);
+  if (source < 0) return false;
+  int dest = open(from_path.c_str(), O_WRONLY | O_CREAT /*| O_TRUNC/**/, 0644);
+  if (dest < 0) {
+    close(source);
+    return false;
+  }
+  // struct required, rationale: function stat() exists also
+  struct stat stat_source;
+  fstat(source, &stat_source);
+  size_t total_copied = 0;
+  while (total_copied < stat_source.st_size) {
+    ssize_t aux = sendfile(dest, source, 0, stat_source.st_size);
+    if (aux < 0) {
+      close(source);
+      close(dest);
+      remove(to_path.c_str);
+      return false;
+    }
+    total_copied += aux;
+  }
+  close(source);
+  close(dest);
+  return true;
+}
+
 std::string filename_from_path(std::string filepath) {
   char cfilepath[MAXNAME];
   strncpy(cfilepath, filepath.c_str(), MAXNAME);
@@ -190,7 +220,6 @@ std::string dirname_from_path(std::string filepath) {
   std::string dirname_ = dirname(cfilepath);
   return dirname_;
 }
-
 
 std::string flocaltime(std::string format, time_t t) {
   struct tm tm;

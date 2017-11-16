@@ -65,6 +65,7 @@ public:
   bool send_message(fs_message_t& msg);
   bool recv_message(fs_message_t& msg);
   void logout();
+  void log(std::string msg);
 protected:
   uint32_t sid;
   void _run();

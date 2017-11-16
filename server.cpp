@@ -180,11 +180,7 @@ FileSyncSession::~FileSyncSession(void) {
 }
 
 void FileSyncSession::logout() {
-  if (user) {
-    server->log("session of `" + user->userid + "` logging out");
-  } else {
-    server->log("session logging out");
-  }
+  log("logged out");
   if (active) {
     close();
   }
@@ -275,9 +271,9 @@ void FileSyncSession::handle_login(fs_message_t& msg) {
   }
   if (server->users[uid].sessions.size() >= server->max_con) {
     resp.type = LOGIN_DENY;
-    server->log("login: denied user " + uid);
+    log("login: denied user `" + uid + "`");
   } else {
-    server->log("login: accepted user " + uid);
+    log("login: accepted user `" + uid + "`");
     resp.type = LOGIN_ACCEPT;
     user = &server->users[uid];
     sid = ++user->last_sid;
@@ -345,7 +341,7 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
       old_fileinfo->last_mod == fileinfo.last_mod &&
       old_fileinfo->size     == fileinfo.size) {
     // deny : identical file exists
-    server->log("upload: denied `" + filename + "`.");
+    log("upload: denied `" + filename + "`.");
     msg.type = htonl(UPLOAD_DENY);
     send_message(msg);
     file.close();
@@ -362,7 +358,7 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
   old_fileinfo = (fileinfo_t*) msg.content;
   old_fileinfo->last_mod = htonl(fileinfo.last_mod);
   if (!send_message(msg)) return;
-  server->log("upload: accepted `" + filename + "`.");
+  log("upload: accepted `" + filename + "`.");
   ssize_t total_received = 0;
   while (total_received < fileinfo.size) {
     if (!recv_message(msg)) {
@@ -382,7 +378,7 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
       default:
         file.close();
         remove(tmpfilepath.c_str());
-        server->log("upload: failed `" + filename + "`.");
+        log("upload: failed `" + filename + "`.");
         user->files_mtx.unlock();
         return;
     }
@@ -405,7 +401,7 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
   user->log_action(action);
 
   user->files_mtx.unlock();
-  server->log("upload: finished `" + filename + "`.");
+  log("upload: finished `" + filename + "`.");
 }
 
 void FileSyncSession::handle_download(fs_message_t& msg) {
@@ -435,7 +431,7 @@ void FileSyncSession::handle_download(fs_message_t& msg) {
   } else {
     // send `accept` reply
     resp.type = htonl(DOWNLOAD_ACCEPT);
-    server->log("("+user->userid+") download: accepted `"+filename+"`.");
+    log("download: accepted `"+filename+"`.");
     memset(resp.content, 0, MSG_LENGTH);
     fileinfo_t *hostfileinfo = &user->files[filename];
     fileinfo_t *netfileinfo = (fileinfo_t *) resp.content;
@@ -454,7 +450,7 @@ void FileSyncSession::handle_download(fs_message_t& msg) {
         resp.type = htonl(TRANSFER_END);
       }
       if (!send_message(resp)) {
-        server->log("(" + user->userid + ") download: failed `" + filename + "`");
+        log("download: failed `" + filename + "`");
         break;
       }
       total_sent += MSG_LENGTH;
@@ -469,7 +465,7 @@ void FileSyncSession::handle_delete(fs_message_t& msg) {
   std::string filepath = user->userdir + "/" + filename;
   user->files_mtx.lock();
   if (!user->files.count(filename)) {
-    server->log("delete: not found `" + filename + "`.");
+    log("delete: file not found `" + filename + "`");
     msg.type = htonl(NOT_FOUND);
     remove(filepath.c_str());
     send_message(msg);
@@ -487,7 +483,7 @@ void FileSyncSession::handle_delete(fs_message_t& msg) {
     strncpy(action.name, filename.c_str(), MAXNAME);
     user->log_action(action);
 
-    server->log("delete: success `" + filename + "`.");
+    server->log("delete: success `" + filename + "`");
   }
   user->files_mtx.unlock();
 }
@@ -502,7 +498,7 @@ bool FileSyncSession::send_message(fs_message_t& msg) {
     }
   }
   catch (std::runtime_error e) {
-    server->log(e.what());
+    log(e.what());
     close();
     return false;
   }
@@ -519,13 +515,23 @@ bool FileSyncSession::recv_message(fs_message_t& msg) {
     }
   }
   catch (std::runtime_error e) {
-    server->log(e.what());
+    log(e.what());
     close();
     return false;
   }
   return true;
 }
 
+void FileSyncSession::log(std::string msg) {
+  char cssid[64];
+  sprintf(cssid,"%d",sid);
+  std::string ssid(cssid);
+  if (user) {
+    server->log("("+user->userid+":"+ssid+") " + msg);
+  } else {
+    server->log("(~anon:"+ssid+") " + msg);
+  }
+}
 void FileSyncSession::close() {
   active = false;
   tcp->close();
