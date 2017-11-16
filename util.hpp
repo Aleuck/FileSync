@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <pwd.h>
 #include <libgen.h>
+#include <utime.h>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -45,7 +46,13 @@
 #define UPLOAD_ACCEPT    3
 #define UPLOAD_DENY      4
 #define DOWNLOAD_ACCEPT  5
+#define DELETE_ACCEPT    6
+#define NEW_ACTION       7
+#define NO_NEW_ACTION    8
 #define NOT_FOUND       44
+
+#define A_FILE_UPDATED   1
+#define A_FILE_DELETED   2
 
 #define ABORT           55
 // structures
@@ -142,6 +149,7 @@ private:
 };
 std::string get_homedir();
 std::string filename_from_path(std::string filepath);
+std::string dirname_from_path(std::string filepath);
 std::string flocaltime(std::string format, time_t t);
 void create_dir(std::string path);
 #endif

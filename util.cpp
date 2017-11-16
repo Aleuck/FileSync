@@ -184,6 +184,14 @@ std::string filename_from_path(std::string filepath) {
   return filename;
 }
 
+std::string dirname_from_path(std::string filepath) {
+  char cfilepath[MAXNAME];
+  strncpy(cfilepath, filepath.c_str(), MAXNAME);
+  std::string dirname_ = dirname(cfilepath);
+  return dirname_;
+}
+
+
 std::string flocaltime(std::string format, time_t t) {
   struct tm tm;
   // using localtime_r() instead of localtime()

@@ -47,8 +47,8 @@ void FSServerUI::run() {
       server->qlogmutex.lock();
       int lines = 0;
       werase(log_win);
-      for (auto ii = server->qlog.begin(); ii != server->qlog.end() && lines < 10; ++ii) {
-        wmove(log_win, h-3-(lines++), 2);
+      for (auto ii = server->qlog.begin(); ii != server->qlog.end() && lines < (h-4); ++ii) {
+        wmove(log_win, h-2-(lines++), 2);
         wprintw(log_win, (*ii).c_str());
       }
       server->qlogmutex.unlock();

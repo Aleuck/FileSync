@@ -1,9 +1,10 @@
 #include "client.hpp"
 #include "clientUI.hpp"
 #include <sys/inotify.h>
+#include <regex>
 
 #define USERDIR_PREFIX "sync_dir_"
-#define TEMPFILE_SUFIX ".temp"
+#define TEMPFILE_SUFIX ".fstmp"
 
 #define IN_EVENT_SIZE (sizeof(struct inotify_event))
 #define IN_BUF_LEN (64 * (IN_EVENT_SIZE + 16))
@@ -24,7 +25,10 @@ int main(int argc, char* argv[]) {
   string userid(argv[1]);
   string address(argv[2]);
   int port = atoi(argv[3]);
-
+  if (argc >= 5) {
+    string dir_prefix(argv[4]);
+    clnt.set_dir_prefix(dir_prefix);
+  }
   try {
     clnt.connect(address, port);
   }
@@ -53,23 +57,31 @@ int main(int argc, char* argv[]) {
 FileSyncClient::FileSyncClient(void) {
   userdir_prefix.assign(USERDIR_PREFIX);
 }
+
 FileSyncClient::~FileSyncClient(void) {
 }
+
 void FileSyncClient::connect(std::string address, int port) {
   tcp.connect(address, port);
 }
 
+void FileSyncClient::set_dir_prefix(std::string dir_prefix) {
+  userdir_prefix = dir_prefix;
+}
+
 bool FileSyncClient::login(std::string uid) {
   fs_message_t msg;
+  memset((char*)&msg, 0, sizeof(fs_message_t));
   msg.type = htonl(REQUEST_LOGIN);
-  memset(msg.content, 0, sizeof(MSG_LENGTH));
   strncpy(msg.content, uid.c_str(), MAXNAME);
-  tcp.send((char*) &msg, sizeof(msg));
-  tcp.recv((char*) &msg, sizeof(msg));
+  if (!send_message(msg)) return false;
+  if (!recv_message(msg)) return false;
   msg.type = ntohl(msg.type);
   switch (msg.type) {
     case LOGIN_ACCEPT:
       userid.assign(uid);
+      memcpy((char*) &last_update, msg.content, sizeof(uint32_t));
+      last_update = ntohl(last_update);
       log("Log in accepted.");
       return true;
     case LOGIN_DENY:
@@ -88,6 +100,19 @@ void FileSyncClient::start() {
   ah_thread = std::thread(&FileSyncClient::action_handler, this);
 }
 
+void FileSyncClient::initdir() {
+  string homedir = get_homedir();
+  userdir = homedir + "/" + userdir_prefix + userid;
+  create_dir(userdir);
+}
+
+void FileSyncClient::log(std::string msg) {
+  qlog_mutex.lock();
+  qlog.push_front(flocaltime("%T: ", time(NULL)) + msg);
+  qlog_mutex.unlock();
+  qlog_sem.post();
+}
+
 void FileSyncClient::enqueue_action(FilesyncAction action) {
   actions_mutex.lock();
   action.id = ++last_action;
@@ -95,8 +120,10 @@ void FileSyncClient::enqueue_action(FilesyncAction action) {
   actions_mutex.unlock();
   actions_sem.post();
 }
+
 void FileSyncClient::action_handler() {
   int sig;
+
   while (running) {
     // wait for an action to be available
     try {
@@ -118,6 +145,9 @@ void FileSyncClient::action_handler() {
     actions_queue.pop();
     actions_mutex.unlock();
     switch (action.type) {
+      case REQUEST_SYNC:
+        get_update(action.arg);
+        break;
       case REQUEST_FLIST:
         list_files(action.arg);
         break;
@@ -130,20 +160,15 @@ void FileSyncClient::action_handler() {
       case REQUEST_DELETE:
         delete_file(action.arg);
         break;
+      case REQUEST_LOGOUT:
+        stop();
+        break;
       default:
         log("Action not implemented");
+        break;
     }
-    // execute action
   }
   tcp.close();
-}
-
-void FileSyncClient::stop() {
-  if (sync_running || running) {
-    log ("exiting?");
-    sync_running = false;
-    running = false;
-  }
 }
 
 /* ------------------------------------
@@ -151,13 +176,20 @@ void FileSyncClient::stop() {
     - Watches the userdir for changes
    ------------------------------------ */
 void FileSyncClient::sync() {
+  struct timespec sleep_time;
+  sleep_time.tv_sec = 0;
+  sleep_time.tv_nsec = 500000000; // half second
+
+  std::regex ignore_regex("(4913|.*\\.fstmp|.*\\.swpx{0,1}|.*~)$");
+
+  // start inotify
   int fd = inotify_init1(IN_NONBLOCK);
   if (fd < 0) {
     stop();
     return;
   }
   int wd = inotify_add_watch(fd, userdir.c_str(),
-    IN_CREATE | IN_DELETE | IN_MODIFY | IN_MOVED_TO | IN_MOVED_FROM |
+    IN_CREATE | IN_DELETE | IN_CLOSE_WRITE | IN_MOVED_TO | IN_MOVED_FROM |
     IN_DONT_FOLLOW | IN_EXCL_UNLINK);
   if (wd < 0) {
     stop();
@@ -165,7 +197,9 @@ void FileSyncClient::sync() {
   }
   ssize_t len = 0;
   char buffer[IN_BUF_LEN];
+
   while (sync_running) {
+    // read events
     len = read(fd, buffer, IN_BUF_LEN);
     if (len < 0) {
       switch (errno) {
@@ -179,21 +213,60 @@ void FileSyncClient::sync() {
           log("inotify problem");
           break;
       }
-      continue;
     }
     ssize_t i = 0;
     while (i < len) {
       struct inotify_event *event;
       event = (struct inotify_event *) &buffer[i];
-      log("--i event--");
-      log(std::string(event->name));
-      if (IN_CREATE & event->mask) log("IN_CREATE");
-      if (IN_DELETE & event->mask) log("IN_DELETE");
-      if (IN_MODIFY & event->mask) log("IN_MODIFY");
-      if (IN_MOVED_TO & event->mask) log("IN_MOVED_TO");
-      if (IN_MOVED_FROM & event->mask) log("IN_MOVED_FROM");
+      std::string filename = event->name;
+      std::string filepath = userdir + "/" + filename;
+      if(std::regex_match(filename, ignore_regex)) {
+        // log("inotify: " + filename + " ignored");
+      } else {
+        switch (event->mask) {
+          case IN_CREATE: // new file
+          case IN_MOVED_TO: // moved into folder
+          case IN_CLOSE_WRITE: // modified
+            log("inotify: upload " + filename);
+            enqueue_action(FilesyncAction(REQUEST_UPLOAD, filepath));
+            break;
+          case IN_DELETE: // deleted
+          case IN_MOVED_FROM: // moved from folder
+            log("inotify: delete " + filename);
+            enqueue_action(FilesyncAction(REQUEST_DELETE, filename));
+            break;
+        }
+      }
       i += IN_EVENT_SIZE + event->len;
     }
+
+    enqueue_action(FilesyncAction(REQUEST_SYNC, ""));
+    nanosleep(&sleep_time, NULL);
+  }
+}
+
+void FileSyncClient::process_update(fs_action_t &update) {
+  std::string filename = update.name;
+  std::string filepath = userdir + "/" + filename;
+  switch (update.type) {
+    case A_FILE_UPDATED: {
+      enqueue_action(FilesyncAction(REQUEST_DOWNLOAD, filepath));
+    } break;
+    case A_FILE_DELETED: {
+      remove(filepath.c_str());
+    } break;
+    default: {
+      //nothing
+    } break;
+  }
+}
+
+void FileSyncClient::stop() {
+  if (sync_running || running) {
+    log("exiting...");
+    sync_running = false;
+    running = false;
+    tcp.shutdown();
   }
 }
 
@@ -202,23 +275,36 @@ void FileSyncClient::sync() {
     - Waits client threads to finish
    ------------------------------------ */
 void FileSyncClient::wait() {
-  sync_thread.join();
   ah_thread.join();
+  sync_thread.join();
 }
 
-void FileSyncClient::initdir() {
-  string homedir = get_homedir();
-  userdir = homedir + "/" + userdir_prefix + userid;
-  create_dir(userdir);
-}
+void FileSyncClient::get_update(std::string filepath) {
+  // request updates
+  fs_message_t msg;
+  fs_action_t *update = (fs_action_t *) msg.content;
+  memset((char*) &msg, 0, sizeof(fs_message_t));
+  msg.type = htonl(REQUEST_SYNC);
+  update->id = htonl(last_update);
+  if (!send_message(msg)) stop();
 
-void FileSyncClient::log(std::string msg) {
-  qlog_mutex.lock();
-  qlog.push_front(msg);
-  qlog_mutex.unlock();
-  qlog_sem.post();
+  // parse response
+  if (!recv_message(msg)) stop();
+  msg.type = ntohl(msg.type);
+  switch (msg.type) {
+    case NEW_ACTION:
+      update->id = ntohl(update->id);
+      update->type = ntohl(update->type);
+      update->timestamp = ntohl(update->timestamp);
+      update->sid = ntohl(update->sid);
+      last_update = update->id;
+      process_update(*update);
+      break;
+    case NO_NEW_ACTION:
+      // do nothing
+      break;
+  }
 }
-
 void FileSyncClient::upload_file(std::string filepath) {
   // try to open and get stats;
   struct stat filestats;
@@ -242,49 +328,43 @@ void FileSyncClient::upload_file(std::string filepath) {
   msg.type = htonl(REQUEST_UPLOAD);
   memcpy(msg.content, (char*) &fileinfo, sizeof(fileinfo_t));
   // send message and get reply
-  try {
-    ssize_t aux;
-    aux = tcp.send((char*) &msg, sizeof(fs_message_t));
-    aux = tcp.recv((char*) &msg, sizeof(fs_message_t));
-    if (aux == 0) {
-      stop();
-      return;
-    }
+  if (!send_message(msg)) {
+    file.close();
+    return;
   }
-  catch (std::runtime_error e) {
-    log(e.what());
+  if (!recv_message(msg)) {
+    file.close();
     return;
   }
   // verify response
   msg.type = ntohl(msg.type);
   switch (msg.type) {
     case UPLOAD_ACCEPT: {
+      // get new file timestamp
+      fileinfo_t *new_info = (fileinfo_t*) msg.content;
+      fileinfo.last_mod = ntohl(new_info->last_mod);
+      fileinfo.size = ntohl(new_info->size);
       // prepare to send file
       msg.type = htonl(TRANSFER_OK);
       file.seekg(0, ios::beg);
       size_t total_sent = 0;
-      while (!file.eof()) {
+      while (total_sent < fileinfo.size) {
+        memset(msg.content, 0, MSG_LENGTH);
         file.read(msg.content, MSG_LENGTH);
         if (file.eof()) {
           msg.type = htonl(TRANSFER_END);
         }
-        try {
-          ssize_t sent = tcp.send((char*) &msg, sizeof(fs_message_t));
-          if (sent == 0) {
-            file.close();
-            stop();
-            return;
-          }
-        }
-        catch (std::runtime_error e) {
+        if (!send_message(msg)) {
           file.close();
-          log(e.what());
-          stop();
           return;
         }
         total_sent += MSG_LENGTH;
       }
       file.close();
+      struct utimbuf utimes;
+      utimes.actime = fileinfo.last_mod;
+      utimes.modtime = fileinfo.last_mod;
+      utime(filepath.c_str(), &utimes);
     } break;
     case UPLOAD_DENY: {
       // log incident and abort
@@ -303,30 +383,26 @@ void FileSyncClient::download_file(std::string filepath) {
   fs_message_t msg;
   memset((char*) &msg, 0, sizeof(msg));
   std::string filename = filename_from_path(filepath);
-  msg.type = htonl(REQUEST_DOWNLOAD);
+  std::string dirname = dirname_from_path(filepath);
   std::string tmpfilepath = filepath + TEMPFILE_SUFIX;
+
   std::ofstream file(tmpfilepath, std::ofstream::binary);
   if (!file.is_open()) {
     log("download: Couldn't open file '" + filename + "' to write.");
     return;
   }
+
+  // make request
   msg.type = htonl(REQUEST_DOWNLOAD);
   strncpy(msg.content, filename.c_str(), MAXNAME);
-  try {
-    ssize_t aux;
-    aux = tcp.send((char*) &msg, sizeof(fs_message_t));
-    aux = tcp.recv((char*) &msg, sizeof(fs_message_t));
-    if (aux == 0) {
-      file.close();
-      remove(tmpfilepath.c_str());
-      stop();
-      return;
-    }
-  }
-  catch (std::runtime_error e) {
+  if (!send_message(msg)) {
     file.close();
     remove(tmpfilepath.c_str());
-    log(e.what());
+    return;
+  }
+  if (!recv_message(msg)) {
+    file.close();
+    remove(tmpfilepath.c_str());
     return;
   }
   msg.type = ntohl(msg.type);
@@ -351,22 +427,10 @@ void FileSyncClient::download_file(std::string filepath) {
   fileinfo.last_mod = ntohl(fileinfo.last_mod);
   size_t total_received = 0;
   while (total_received < fileinfo.size) {
-    try {
-      ssize_t received;
-      received = tcp.recv((char*) &msg, sizeof(fs_message_t));
-      if (received == 0) {
-        file.close();
-        remove(tmpfilepath.c_str());
-        log("download: Connection closed");
-        stop();
-        return;
-      }
-    }
-    catch (std::runtime_error e) {
+    if (!recv_message(msg)) {
       file.close();
+      log("download: connection problem");
       remove(tmpfilepath.c_str());
-      log("download: " + std::string(e.what()));
-      stop();
       return;
     }
     msg.type = ntohl(msg.type);
@@ -386,21 +450,21 @@ void FileSyncClient::download_file(std::string filepath) {
     total_received += MSG_LENGTH;
   }
   file.close();
+  struct utimbuf utimes;
+  utimes.actime = fileinfo.last_mod;
+  utimes.modtime = fileinfo.last_mod;
+  utime(tmpfilepath.c_str(), &utimes);
   rename(tmpfilepath.c_str(), filepath.c_str());
 }
 
 void FileSyncClient::delete_file(std::string filename) {
   fs_message_t msg;
-  memset((char*) &msg, 0, sizeof(msg));
+  memset((char*) &msg, 0, sizeof(fs_message_t));
+
   msg.type = htonl(REQUEST_DELETE);
   memcpy(msg.content, filename.c_str(), MAXNAME);
-  ssize_t aux;
-  aux = tcp.send((char*) &msg, sizeof(fs_message_t));
-  aux = tcp.recv((char*) &msg, sizeof(fs_message_t));
-  if (aux == 0) {
-    stop(); // disconnected
-    return;
-  }
+  if (!send_message(msg)) return;
+  if (!recv_message(msg)) return;
   msg.type = ntohl(msg.type);
 }
 
@@ -411,6 +475,44 @@ void FileSyncClient::list_files(std::string filename) {
   ssize_t aux;
   aux = tcp.send((char*) &msg, sizeof(fs_message_t));
   aux = tcp.recv((char*) &msg, sizeof(fs_message_t));
+  if (aux == 0) {
+    stop(); // disconnected
+    return;
+  }
+}
+
+bool FileSyncClient::send_message(fs_message_t& msg) {
+  ssize_t aux;
+  try {
+    aux = tcp.send((char*)&msg, sizeof(fs_message_t));
+    if (!aux) {
+      stop();
+      return false;
+    }
+  }
+  catch (std::runtime_error e) {
+    log(e.what());
+    stop();
+    return false;
+  }
+  return true;
+}
+
+bool FileSyncClient::recv_message(fs_message_t& msg) {
+  ssize_t aux;
+  try {
+    aux = tcp.recv((char*)&msg, sizeof(fs_message_t));
+    if (!aux) {
+      stop();
+      return false;
+    }
+  }
+  catch (std::runtime_error e) {
+    log(e.what());
+    stop();
+    return false;
+  }
+  return true;
 }
 
 FilesyncAction::FilesyncAction(int type, std::string arg) {

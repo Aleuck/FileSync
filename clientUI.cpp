@@ -36,15 +36,15 @@ void FSClientUI::run() {
       client->qlog_mutex.lock();
       int lines = 0;
       werase(log_win);
-      for (auto ii = client->qlog.begin(); ii != client->qlog.end() && lines < (h-5); ++ii) {
-        wmove(log_win, h-3-(lines++), 2);
+      for (auto ii = client->qlog.begin(); ii != client->qlog.end() && lines < (h-4); ++ii) {
+        wmove(log_win, h-2-(lines++), 2);
         wprintw(log_win, (*ii).c_str());
       }
       client->qlog_mutex.unlock();
       box(log_win, 0, 0);
+      wrefresh(log_win);
     }
     wmove(log_win,0,0);
-    wrefresh(log_win);
     if ((ch = wgetch(log_win)) == ERR) {
       // no input
     } else {
@@ -52,7 +52,7 @@ void FSClientUI::run() {
       switch (ch) {
         case 'q':
         case 'Q':
-          client->stop();
+          client->enqueue_action(FilesyncAction(REQUEST_LOGOUT, ""));
           break;
         default:
           break;

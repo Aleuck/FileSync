@@ -62,6 +62,8 @@ public:
   void handle_upload(fs_message_t& msg);
   void handle_download(fs_message_t& msg);
   void handle_delete(fs_message_t& msg);
+  bool send_message(fs_message_t& msg);
+  bool recv_message(fs_message_t& msg);
   void logout();
 protected:
   uint32_t sid;
@@ -78,15 +80,19 @@ class ConnectedUser {
 friend class FileSyncSession;
 public:
   ConnectedUser(void);
+  void log_action(fs_action_t &action);
+  fs_action_t get_next_action(uint32_t id, uint32_t sid);
   std::string userid;
   std::string userdir;
 protected:
   uint32_t last_sid;
   std::list<FileSyncSession*> sessions;
+  std::map<std::string,fileinfo_t> files;
+  std::mutex files_mtx;
   std::mutex sessionsmutex;
-  std::list<fs_action_t> actions;
-  std::mutex actionsmutex;
+  std::deque<fs_action_t> actions;
   uint32_t last_action;
+  std::mutex actions_mtx;
 };
 
 #endif

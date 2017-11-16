@@ -29,11 +29,15 @@ public:
   void list_files(std::string filename);
   void set_dir_prefix(std::string dir_prefix);
   void enqueue_action(FilesyncAction action);
+  void process_update(fs_action_t &update);
+  void get_update(std::string filepath);
   void start();
   void stop();
   void wait();
   void initdir();
   void log(std::string msg);
+  bool send_message(fs_message_t& msg);
+  bool recv_message(fs_message_t& msg);
   std::string userid;
   std::list<std::string> qlog;
   std::mutex qlog_mutex;
@@ -47,10 +51,10 @@ private:
   bool running;
   std::thread sync_thread; // thread to watch userdir
   std::thread ah_thread;  // thread to handle actions
-  std::map<std::string, File> files;
   std::mutex filesmutex;
   TCPClient tcp;
   uint32_t last_action;
+  uint32_t last_update;
   std::queue<FilesyncAction> actions_queue;
   std::mutex actions_mutex;
   Semaphore actions_sem;
