@@ -300,6 +300,12 @@ void FileSyncSession::handle_sync(fs_message_t& msg) {
   fs_message_t resp;
   memset((char*) &resp, 0, sizeof(fs_message_t));
 
+  if (!user) {
+    resp.type = htonl(UNAUTHENTICATED);
+    send_message(resp);
+    return;
+  }
+
   action.id = ntohl(action.id);
   action = user->get_next_action(action.id, sid);
 
@@ -316,9 +322,47 @@ void FileSyncSession::handle_sync(fs_message_t& msg) {
 }
 
 void FileSyncSession::handle_flist(fs_message_t& msg) {
+  fs_message_t resp;
+  memset((char*) &resp, 0, sizeof(fs_message_t));
+
+  if (!user) {
+    resp.type = htonl(UNAUTHENTICATED);
+    send_message(resp);
+    return;
+  }
+
+  user->files_mtx.lock();
+  uint32_t count = user->files.size();
+  uint32_t *net_count = (uint32_t *) resp.content;
+  resp.type = htonl(FLIST_ACCEPT);
+  *net_count = htonl(count);
+
+  if (!send_message(resp)) {
+    user->files_mtx.unlock();
+    return;
+  }
+
+  resp.type = htonl(TRANSFER_OK);
+  fileinfo_t *finfo = (fileinfo_t *) resp.content;
+  for (auto ii = user->files.begin(); ii != user->files.end(); ++ii) {
+    memset(resp.content, 0, MSG_LENGTH);
+    finfo->last_mod = htonl(ii->second.last_mod);
+    finfo->size = htonl(ii->second.size);
+    strncpy(finfo->name, ii->second.name, MAXNAME);
+  }
+  user->files_mtx.unlock();
 }
 
 void FileSyncSession::handle_upload(fs_message_t& msg) {
+  fs_message_t resp;
+  memset((char*) &resp, 0, sizeof(fs_message_t));
+
+  if (!user) {
+    resp.type = htonl(UNAUTHENTICATED);
+    send_message(resp);
+    return;
+  }
+
   fileinfo_t fileinfo;
   fileinfo_t* old_fileinfo = NULL;
   memcpy((char*) &fileinfo, msg.content, sizeof(fileinfo_t));
@@ -406,6 +450,14 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
 
 void FileSyncSession::handle_download(fs_message_t& msg) {
   fs_message_t resp;
+  memset((char*) &resp, 0, sizeof(fs_message_t));
+
+  if (!user) {
+    resp.type = htonl(UNAUTHENTICATED);
+    send_message(resp);
+    return;
+  }
+
   // get file name and path
   msg.content[MAXNAME-1] = 0;
   std::string filename = msg.content;

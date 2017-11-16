@@ -4,6 +4,7 @@
 #include <unistd.h>        // close
 #include <sys/stat.h>      // fstat
 #include <sys/types.h>     // fstat
+#include <dirent.h>
 using namespace std;
 
 File::File(fileinfo_t fileinfo) {
@@ -183,7 +184,7 @@ void create_dir(std::string path) {
 bool cp(std::string from_path, std::string to_path) {
   int source = open(from_path.c_str(), O_RDONLY, 0);
   if (source < 0) return false;
-  int dest = open(from_path.c_str(), O_WRONLY | O_CREAT /*| O_TRUNC/**/, 0644);
+  int dest = open(from_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
   if (dest < 0) {
     close(source);
     return false;
@@ -191,7 +192,7 @@ bool cp(std::string from_path, std::string to_path) {
   // struct required, rationale: function stat() exists also
   struct stat stat_source;
   fstat(source, &stat_source);
-  size_t total_copied = 0;
+  ssize_t total_copied = 0;
   while (total_copied < stat_source.st_size) {
     ssize_t aux = sendfile(dest, source, 0, stat_source.st_size);
     if (aux < 0) {
@@ -204,6 +205,7 @@ bool cp(std::string from_path, std::string to_path) {
   }
   close(source);
   close(dest);
+
   return true;
 }
 
@@ -219,6 +221,29 @@ std::string dirname_from_path(std::string filepath) {
   strncpy(cfilepath, filepath.c_str(), MAXNAME);
   std::string dirname_ = dirname(cfilepath);
   return dirname_;
+}
+
+std::map<std::string, fileinfo_t> ls_files(std::string dirname) {
+  std::map<std::string, fileinfo_t> files;
+  DIR* dirp = opendir(dirname.c_str());
+  struct dirent entry;
+  struct dirent *result;
+  readdir_r(dirp, &entry, &result);
+  while (result) {
+    std::string filename(entry.d_name);
+    std::string filepath = dirname + "/" + filename;
+    struct stat path_stat;
+    stat(filepath.c_str(), &path_stat);
+    if (S_ISREG(path_stat.st_mode)) {
+      fileinfo_t info;
+      info.last_mod = path_stat.st_mtime;
+      info.size = path_stat.st_size;
+      strncpy(info.name, entry.d_name, MAXNAME);
+      files[filename] = info;
+    }
+    readdir_r(dirp, &entry, &result);
+  }
+  return files;
 }
 
 std::string flocaltime(std::string format, time_t t) {

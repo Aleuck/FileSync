@@ -45,13 +45,14 @@ public:
 private:
   void sync();
   void action_handler();
+  std::mutex files_mtx;
+  std::map<std::string,fileinfo_t> files;
   std::string userdir_prefix;
   std::string userdir;
   bool sync_running;
   bool running;
   std::thread sync_thread; // thread to watch userdir
   std::thread ah_thread;  // thread to handle actions
-  std::mutex filesmutex;
   TCPClient tcp;
   uint32_t last_action;
   uint32_t last_update;

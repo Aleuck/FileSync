@@ -47,14 +47,16 @@
 #define UPLOAD_DENY      4
 #define DOWNLOAD_ACCEPT  5
 #define DELETE_ACCEPT    6
-#define NEW_ACTION       7
-#define NO_NEW_ACTION    8
+#define FLIST_ACCEPT     7
+#define NEW_ACTION       8
+#define NO_NEW_ACTION    9
 #define NOT_FOUND       44
 
 #define A_FILE_UPDATED   1
 #define A_FILE_DELETED   2
 
 #define ABORT           55
+#define UNAUTHENTICATED 66
 // structures
 
 #define TRANSFER_OK     10
@@ -150,6 +152,7 @@ private:
 std::string get_homedir();
 std::string filename_from_path(std::string filepath);
 std::string dirname_from_path(std::string filepath);
+std::map<std::string, fileinfo_t> ls_files(std::string dirname);
 std::string flocaltime(std::string format, time_t t);
 void create_dir(std::string path);
 bool cp(std::string from_path, std::string to_path);

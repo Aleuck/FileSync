@@ -254,6 +254,9 @@ void FileSyncClient::process_update(fs_action_t &update) {
     } break;
     case A_FILE_DELETED: {
       remove(filepath.c_str());
+      files_mtx.lock();
+      files.erase(filename);
+      files_mtx.unlock();
     } break;
     default: {
       //nothing
@@ -365,6 +368,10 @@ void FileSyncClient::upload_file(std::string filepath) {
       utimes.actime = fileinfo.last_mod;
       utimes.modtime = fileinfo.last_mod;
       utime(filepath.c_str(), &utimes);
+
+      files_mtx.lock();
+      files[filename] = fileinfo;
+      files_mtx.unlock();
     } break;
     case UPLOAD_DENY: {
       // log incident and abort
@@ -455,6 +462,9 @@ void FileSyncClient::download_file(std::string filepath) {
   utimes.modtime = fileinfo.last_mod;
   utime(tmpfilepath.c_str(), &utimes);
   rename(tmpfilepath.c_str(), filepath.c_str());
+  files_mtx.lock();
+  files[filename] = fileinfo;
+  files_mtx.unlock();
 }
 
 void FileSyncClient::delete_file(std::string filename) {
@@ -462,6 +472,10 @@ void FileSyncClient::delete_file(std::string filename) {
   memset((char*) &msg, 0, sizeof(fs_message_t));
 
   msg.type = htonl(REQUEST_DELETE);
+
+  files_mtx.lock();
+  files.erase(filename);
+  files_mtx.unlock();
   memcpy(msg.content, filename.c_str(), MAXNAME);
   if (!send_message(msg)) return;
   if (!recv_message(msg)) return;
@@ -472,12 +486,19 @@ void FileSyncClient::list_files(std::string filename) {
   fs_message_t msg;
   memset((char*) &msg, 0, sizeof(msg));
   msg.type = htonl(REQUEST_FLIST);
-  ssize_t aux;
-  aux = tcp.send((char*) &msg, sizeof(fs_message_t));
-  aux = tcp.recv((char*) &msg, sizeof(fs_message_t));
-  if (aux == 0) {
-    stop(); // disconnected
-    return;
+
+  if (!send_message(msg)) return;
+  if (!recv_message(msg)) return;
+
+  uint32_t *net_count = (uint32_t *) msg.content;
+  uint32_t count = ntohl(*net_count);
+
+  for (uint32_t i = 0; i < count; ++i) {
+    if (!recv_message(msg)) return;
+    fileinfo_t *info = (fileinfo_t *) msg.content;
+    info->last_mod = ntohl(info->last_mod);
+    info->size = ntohl(info->size);
+    std::string filename(info->name);
   }
 }
 
