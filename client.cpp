@@ -492,8 +492,9 @@ void FileSyncClient::list_files() {
   if (!send_message(msg)) return;
   if (!recv_message(msg)) return;
 
-  uint32_t *net_count = (uint32_t *) msg.content;
-  uint32_t count = ntohl(*net_count);
+  uint32_t count;
+  memcpy((char*)&count, msg.content, sizeof(uint32_t));
+  count = ntohl(count);
   std::map<std::string, fileinfo_t> serverfiles;
   for (uint32_t i = 0; i < count; ++i) {
     if (!recv_message(msg)) return;
@@ -506,12 +507,14 @@ void FileSyncClient::list_files() {
   for (auto i = serverfiles.begin(); i != serverfiles.end(); ++i) {
     if (!files.count(i->first)) {
       std::string filepath = userdir + "/" + i->first;
+      // download_file(filepath);
       enqueue_action(FilesyncAction(REQUEST_DOWNLOAD, filepath));
     }
   }
   for (auto i = files.begin(); i != files.end(); ++i) {
     if (!serverfiles.count(i->first)) {
       std::string filepath = userdir + "/" + i->first;
+      // upload_file(filepath);
       enqueue_action(FilesyncAction(REQUEST_UPLOAD, filepath));
     }
   }
