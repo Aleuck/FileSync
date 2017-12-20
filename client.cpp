@@ -532,6 +532,7 @@ bool FileSyncClient::send_message(fs_message_t& msg) {
   catch (std::runtime_error e) {
     log(e.what());
     stop();
+    std::cerr << e.what() << endl;
     return false;
   }
   return true;
@@ -549,6 +550,7 @@ bool FileSyncClient::recv_message(fs_message_t& msg) {
   catch (std::runtime_error e) {
     log(e.what());
     stop();
+    std::cerr << e.what() << endl;
     return false;
   }
   return true;

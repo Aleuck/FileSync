@@ -1,7 +1,7 @@
 CC = g++
 CFLAGS = -std=c++11 -Wall -g
 #LFLAGS = -lpthread -lrt -lncurses -ltinfo
-LFLAGS = -lpthread -lrt -lncurses
+LFLAGS = -lpthread -lrt -lncurses -lssl -lcrypto
 OBJ = $(SRC:.c=.o)
 
 all: server client

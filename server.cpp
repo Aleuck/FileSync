@@ -6,6 +6,8 @@
 #define DEFAULT_MAX_CON 2
 #define SERVER_DIR "Filesync_dir"
 #define TEMPFILE_SUFIX ".fstemp"
+#define SSL_KEYFILE "KeyFile.pem"
+#define SSL_CERTFILE "CertFile.pem"
 
 void close_server(int sig);
 
@@ -77,6 +79,7 @@ int FileSyncServer::countUsers() {
 void FileSyncServer::start() {
   try {
     create_dir(server_dir);
+    tcp.open_cert(SSL_CERTFILE, SSL_KEYFILE);
     tcp.bind(tcp_port);
     tcp.listen(tcp_queue_size);
     tcp_active = true;

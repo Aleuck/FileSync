@@ -4,6 +4,8 @@
 #include <string>
 #include <sys/types.h>
 #include <netinet/in.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
 class TCPServer;
 class TCPClient;
@@ -19,6 +21,8 @@ public:
 protected:
   struct sockaddr_in addr;
   int sock_d;
+  const SSL_METHOD *method;
+  SSL_CTX *ctx;
 };
 
 class TCPConnection : public TCPSock {
@@ -32,6 +36,7 @@ public:
   // void unlock();
 protected:
   bool isconnected;
+  SSL *ssl;
 private:
   size_t sendbuffer;
   size_t recvbuffer;
@@ -41,6 +46,7 @@ private:
 class TCPServer : public TCPSock {
 public:
   TCPServer(void);
+  void open_cert(const char* cert, const char* pkey);
   void bind(int port);
   void listen(int queue_size);
   int poll(int req, int time);
