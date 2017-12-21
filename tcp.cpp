@@ -90,7 +90,7 @@ TCPConnection* TCPServer::accept() {
   con->ctx = ctx;
   con->ssl = SSL_new(ctx);
   SSL_set_fd(con->ssl, con->sock_d);
-  if (SSL_connect(con->ssl) != 1) {
+  if (SSL_accept(con->ssl) != 1) {
     delete con;
     unsigned long errCode;
     stringstream errss;
