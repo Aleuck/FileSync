@@ -598,7 +598,7 @@ void FileSyncSession::log(std::string msg) {
   if (user) {
     server->log("("+user->userid+":"+ssid+") " + msg);
   } else {
-    server->log("(~anon:"+ssid+") " + msg);
+    server->log("(~anon) " + msg);
   }
 }
 void FileSyncSession::close() {

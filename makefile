@@ -19,7 +19,7 @@ testtcp: testtcp.o util.o tcp.o
 	$(CC) -o $@ -c $< $(CFLAGS)
 
 clean:
-	rm server client testtcp *.o
+	rm server client *.o
 
 
 love:

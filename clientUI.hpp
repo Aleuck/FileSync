@@ -15,6 +15,8 @@ protected:
   pthread_t pthread;
   bool running;
   void run();
+  void exec_cmd(std::string cmd);
+  void output(std::string cmd);
 };
 
 
