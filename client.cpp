@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
     std::cerr << clnt.userid << '\n';
   }
   clnt.initdir(); // create dir if needed
-  // clnt.enqueue_action(FilesyncAction(REQUEST_FLIST,""));
+  clnt.enqueue_action(FilesyncAction(REQUEST_FLIST,""));
   clnt.start(); // starts client threads
   // initate interface
   FSClientUI ui(&clnt);
@@ -217,6 +217,7 @@ void FileSyncClient::sync() {
       }
     }
     ssize_t i = 0;
+    // read inotify events
     while (i < len) {
       struct inotify_event *event;
       event = (struct inotify_event *) &buffer[i];
@@ -228,15 +229,20 @@ void FileSyncClient::sync() {
         switch (event->mask) {
           case IN_CREATE: // new file
           case IN_MOVED_TO: // moved into folder
-          case IN_CLOSE_WRITE: // modified
-            log("inotify: upload " + filename);
+          case IN_CLOSE_WRITE: { // modified
+            log("inotify: `" + filename + "` created.");
             enqueue_action(FilesyncAction(REQUEST_UPLOAD, filepath));
-            break;
+          } break;
           case IN_DELETE: // deleted
-          case IN_MOVED_FROM: // moved from folder
-            log("inotify: delete " + filename);
-            enqueue_action(FilesyncAction(REQUEST_DELETE, filename));
-            break;
+          case IN_MOVED_FROM: { // moved from folder
+            log("inotify: `" + filename + "` removed.");
+            files_mtx.lock();
+            auto it = files.find(filename);
+            if (it != files.end()) {
+              enqueue_action(FilesyncAction(REQUEST_DELETE, filename));
+            }
+            files_mtx.unlock();
+          } break;
         }
       }
       i += IN_EVENT_SIZE + event->len;
@@ -255,8 +261,8 @@ void FileSyncClient::process_update(fs_action_t &update) {
       enqueue_action(FilesyncAction(REQUEST_DOWNLOAD, filepath));
     } break;
     case A_FILE_DELETED: {
-      remove(filepath.c_str());
       files_mtx.lock();
+      remove(filepath.c_str());
       files.erase(filename);
       files_mtx.unlock();
     } break;
@@ -313,10 +319,12 @@ void FileSyncClient::get_update() {
 void FileSyncClient::upload_file(std::string filepath) {
   // try to open and get stats;
   struct stat filestats;
+  files_mtx.lock();
   std::ifstream file(filepath, std::ios::in|std::ios::binary|std::ios::ate);
   int err = stat(filepath.c_str(), &filestats);
   if (!file.is_open() || err) {
     log("upload: Could not open file '" + filepath + "'");
+    files_mtx.unlock();
     return;
   }
   // get filename from path
@@ -327,24 +335,41 @@ void FileSyncClient::upload_file(std::string filepath) {
   size_t size = file.tellg();
   fileinfo.last_mod = htonl(filestats.st_mtime);
   fileinfo.size = htonl(size);
+  // check if file is already in server
+  auto it = files.find(filename);
+  if (it != files.end()) {
+    fileinfo_t f = it->second;
+    if (f.size == size && f.last_mod == filestats.st_mtime) {
+      // file is already listed as in the server
+      file.close();
+      files_mtx.unlock();
+      return;
+    }
+  }
+  files[filename] = fileinfo;
+  files_mtx.unlock();
   // prepare request message
   fs_message_t msg;
   memset((char*) &msg, 0, sizeof(fs_message_t));
   msg.type = htonl(REQUEST_UPLOAD);
   memcpy(msg.content, (char*) &fileinfo, sizeof(fileinfo_t));
   // send message and get reply
+  log("upload: requesting to upload '" + filename + "'.");
   if (!send_message(msg)) {
     file.close();
+    files_mtx.unlock();
     return;
   }
   if (!recv_message(msg)) {
     file.close();
+    files_mtx.unlock();
     return;
   }
   // verify response
   msg.type = ntohl(msg.type);
   switch (msg.type) {
     case UPLOAD_ACCEPT: {
+      log("upload: file '" + filename + "' accepted by the server.");
       // get new file timestamp
       fileinfo_t *new_info = (fileinfo_t*) msg.content;
       fileinfo.last_mod = ntohl(new_info->last_mod);
@@ -357,32 +382,40 @@ void FileSyncClient::upload_file(std::string filepath) {
         memset(msg.content, 0, MSG_LENGTH);
         file.read(msg.content, MSG_LENGTH);
         if (file.eof()) {
+          // mark end of transmission
           msg.type = htonl(TRANSFER_END);
         }
         if (!send_message(msg)) {
           file.close();
+          files_mtx.unlock();
           return;
         }
         total_sent += MSG_LENGTH;
       }
       file.close();
+      log("upload: file '" + filename + "' transfer finished.");
       struct utimbuf utimes;
       utimes.actime = fileinfo.last_mod;
       utimes.modtime = fileinfo.last_mod;
       utime(filepath.c_str(), &utimes);
-
-      files_mtx.lock();
+      std::string dirname = dirname_from_path(filepath);
+      if (dirname != userdir) {
+        // I really hope this will work
+        cp(filepath, userdir + "/" + filename);
+      }
       files[filename] = fileinfo;
       files_mtx.unlock();
     } break;
     case UPLOAD_DENY: {
       // log incident and abort
       file.close();
+      files_mtx.unlock();
       std::string reason = msg.content;
       log("upload: file '" + filename + "' refused by server: " + reason);
     } break;
     default: {
       file.close();
+      files_mtx.unlock();
       log("upload: file '" + filename + "' failed. Unrecognized server reply.");
     } break;
   }
@@ -395,8 +428,10 @@ void FileSyncClient::download_file(std::string filepath) {
   std::string dirname = dirname_from_path(filepath);
   std::string tmpfilepath = filepath + TEMPFILE_SUFIX;
 
+  files_mtx.lock();
   std::ofstream file(tmpfilepath, std::ofstream::binary);
   if (!file.is_open()) {
+    files_mtx.unlock();
     log("download: Couldn't open file '" + filename + "' to write.");
     return;
   }
@@ -404,16 +439,18 @@ void FileSyncClient::download_file(std::string filepath) {
   // make request
   msg.type = htonl(REQUEST_DOWNLOAD);
   strncpy(msg.content, filename.c_str(), MAXNAME);
-  if (!send_message(msg)) {
+  if (!send_message(msg) || !recv_message(msg)) {
     file.close();
     remove(tmpfilepath.c_str());
+    files_mtx.unlock();
     return;
   }
-  if (!recv_message(msg)) {
-    file.close();
-    remove(tmpfilepath.c_str());
-    return;
-  }
+  // if (!recv_message(msg)) {
+  //   file.close();
+  //   remove(tmpfilepath.c_str());
+  //   files_mtx.unlock();
+  //   return;
+  // }
   msg.type = ntohl(msg.type);
   switch (msg.type) {
     case DOWNLOAD_ACCEPT:
@@ -423,10 +460,12 @@ void FileSyncClient::download_file(std::string filepath) {
       log("download: File '" + filename + "' not found.");
       file.close();
       remove(tmpfilepath.c_str());
+      files_mtx.unlock();
       return;
     default:
       file.close();
       remove(tmpfilepath.c_str());
+      files_mtx.unlock();
       log("download: Invalid server response");
       return;
   }
@@ -440,6 +479,7 @@ void FileSyncClient::download_file(std::string filepath) {
       file.close();
       log("download: connection problem");
       remove(tmpfilepath.c_str());
+      files_mtx.unlock();
       return;
     }
     msg.type = ntohl(msg.type);
@@ -453,6 +493,7 @@ void FileSyncClient::download_file(std::string filepath) {
       default:
         file.close();
         remove(tmpfilepath.c_str());
+        files_mtx.unlock();
         log("download: transfer did not succeed.");
         return;
     }
@@ -464,7 +505,7 @@ void FileSyncClient::download_file(std::string filepath) {
   utimes.modtime = fileinfo.last_mod;
   utime(tmpfilepath.c_str(), &utimes);
   rename(tmpfilepath.c_str(), filepath.c_str());
-  files_mtx.lock();
+  log("download: file '" + filename + "' finished.");
   files[filename] = fileinfo;
   files_mtx.unlock();
 }

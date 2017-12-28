@@ -366,6 +366,10 @@ void FileSyncSession::handle_flist(fs_message_t& msg) {
     finfo->last_mod = htonl(ii->second.last_mod);
     finfo->size = htonl(ii->second.size);
     strncpy(finfo->name, ii->second.name, MAXNAME);
+    if (!send_message(resp)) {
+      user->files_mtx.unlock();
+      return;
+    };
   }
   user->files_mtx.unlock();
 }

@@ -29,18 +29,29 @@ void FSClientUI::exec_cmd(std::string cmd) {
     client->enqueue_action(FilesyncAction(REQUEST_LOGOUT, ""));
     return;
   }
+  if (cmd == "list") {
+    return;
+  }
   std::vector<std::string> cmds;
   boost::split(cmds, cmd, boost::is_any_of(" "));
   if (cmds.size() > 0) {
-    if (cmds[0] == "ls") {
-      //
-    } else if (cmds[0] == "upload") {
-      //
-    } else if (cmds[0] == "download") {
-      //
-    } else {
-      output("`" + cmds[0] + "`: Invalid command.")
+    if (cmds[0] == "upload") {
+      if (cmds.size() != 2) {
+        // output("`Wrong argument, correct usage: upload <filepath>");
+        return;
+      }
+      client->enqueue_action(FilesyncAction(REQUEST_UPLOAD, cmds[1]));
+      return;
     }
+    if (cmds[0] == "download") {
+      if (cmds.size() != 2) {
+        // output("`Wrong argument, correct usage: download <filename>");
+        return;
+      }
+      client->enqueue_action(FilesyncAction(REQUEST_DOWNLOAD, cmds[1]));
+      return;
+    }
+    // output("`" + cmds[0] + "`: Invalid command.");
   }
 }
 
