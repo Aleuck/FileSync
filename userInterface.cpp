@@ -27,6 +27,11 @@ void FilesyncUI::end() {
   endwin(); // end ncurses
 }
 
+void FilesyncUI::boxTitle(WINDOW *win, std::string title) {
+  box(win, 0, 0);
+  mvwprintw(win, 0, 1, title.c_str());
+}
+
 void FilesyncUI::getScreenSize(int &h, int &w) {
   getmaxyx(stdscr, h, w);
 }

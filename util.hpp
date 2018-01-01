@@ -40,6 +40,8 @@
 #define REQUEST_UPLOAD   5
 #define REQUEST_DOWNLOAD 6
 #define REQUEST_DELETE   7
+#define REQUEST_LOCK    10
+#define REQUEST_UNLOCK  11
 
 #define LOGIN_ACCEPT     1
 #define LOGIN_DENY       2
@@ -50,7 +52,12 @@
 #define FLIST_ACCEPT     7
 #define NEW_ACTION       8
 #define NO_NEW_ACTION    9
+#define LOCK_GRANTED    10
+#define LOCK_BUSY       11
 #define NOT_FOUND       44
+
+#define SERVER_GREET    50
+#define SERVER_REDIR    51
 
 #define A_FILE_UPDATED   1
 #define A_FILE_DELETED   2
@@ -68,6 +75,10 @@ typedef struct filesync_message {
   uint32_t type;
   char content[MSG_LENGTH];
 } fs_message_t;
+
+typedef struct server {
+
+} fs_server_t;
 
 typedef struct user {
   char userid[MAXNAME];

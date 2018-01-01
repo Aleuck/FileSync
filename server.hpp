@@ -22,6 +22,7 @@ public:
   void log(std::string);
   int countSessions();
   int countUsers();
+  int connectToMaster(std::string addr, int port);
   std::list<std::string> qlog;
   std::mutex qlogmutex;
   Semaphore qlogsemaphore;
@@ -45,6 +46,7 @@ protected:
   std::mutex usersmutex;
   std::list<FileSyncSession*> sessions;
   std::mutex sessionsmutex;
+  bool is_master;
   // log events
 };
 

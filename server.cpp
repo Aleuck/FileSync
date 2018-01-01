@@ -58,8 +58,17 @@ FileSyncServer::FileSyncServer(void) {
   tcp_active = false;
   thread_active = false;
   keep_running = false;
+  is_master = true;
   server_dir = get_homedir() + "/" + SERVER_DIR;
 }
+
+// void FileSyncServer::connectToMaster(std::string addr, int port) {
+//   //
+// }
+
+// FileSyncBackup FileSyncServer::acceptReplic() {
+//   //
+// }
 
 int FileSyncServer::countSessions() {
   qlogmutex.lock();
@@ -153,6 +162,14 @@ FileSyncSession* FileSyncServer::accept() {
   }
   catch (std::runtime_error e) {
     throw e;
+  }
+  fs_message_t msg;
+  if (is_master) {
+    msg.type = htonl(SERVER_GREET);
+    send_message(msg);
+  } else {
+    msg.type = htonl(SERVER_REDIR);
+    send_message(msg);
   }
   return session;
 }

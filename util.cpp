@@ -184,7 +184,7 @@ void create_dir(std::string path) {
 bool cp(std::string from_path, std::string to_path) {
   int source = open(from_path.c_str(), O_RDONLY, 0);
   if (source < 0) return false;
-  int dest = open(from_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  int dest = open(to_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
   if (dest < 0) {
     close(source);
     return false;

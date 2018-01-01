@@ -26,7 +26,7 @@ public:
   void upload_file(std::string filepath);
   void download_file(std::string filepath);
   void delete_file(std::string filename);
-  void list_files();
+  void sync_dir();
   void set_dir_prefix(std::string dir_prefix);
   void enqueue_action(FilesyncAction action);
   void process_update(fs_action_t &update);
@@ -42,11 +42,12 @@ public:
   std::list<std::string> qlog;
   std::mutex qlog_mutex;
   Semaphore qlog_sem;
+  std::mutex files_mtx;
+  Semaphore files_sem;
+  std::map<std::string, fileinfo_t> files;
 private:
   void sync();
   void action_handler();
-  std::mutex files_mtx;
-  std::map<std::string,fileinfo_t> files;
   std::string userdir_prefix;
   std::string userdir;
   bool sync_running;

@@ -17,6 +17,10 @@ protected:
   void run();
   void exec_cmd(std::string cmd);
   void output(std::string cmd);
+  WINDOW* log_win;
+  WINDOW* cmd_win;
+  WINDOW* files_win;
+  WINDOW* queue_win;
 };
 
 

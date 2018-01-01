@@ -2,6 +2,7 @@
 #include "clientUI.hpp"
 #include <sys/inotify.h>
 #include <regex>
+#include <boost/algorithm/string.hpp>
 
 #define USERDIR_PREFIX "sync_dir_"
 #define TEMPFILE_SUFIX ".fstmp"
@@ -63,7 +64,17 @@ FileSyncClient::~FileSyncClient(void) {
 }
 
 void FileSyncClient::connect(std::string address, int port) {
-  tcp.connect(address, port);
+  do {
+    tcp.connect(address, port);
+    fs_message_t msg;
+    if (!recv_message(msg)) {
+      throw std::runtime_error("bad server");
+    }
+    msg.type = ntohl(msg.type);
+    if (msg.type == SERVER_REDIR) {
+
+    }
+  } while ();
 }
 
 void FileSyncClient::set_dir_prefix(std::string dir_prefix) {
@@ -105,7 +116,7 @@ void FileSyncClient::initdir() {
   string homedir = get_homedir();
   userdir = homedir + "/" + userdir_prefix + userid;
   create_dir(userdir);
-  files = ls_files(userdir);
+  files_sem.post();
 }
 
 void FileSyncClient::log(std::string msg) {
@@ -151,7 +162,7 @@ void FileSyncClient::action_handler() {
         get_update();
         break;
       case REQUEST_FLIST:
-        list_files();
+        sync_dir();
         break;
       case REQUEST_UPLOAD:
         upload_file(action.arg);
@@ -230,7 +241,7 @@ void FileSyncClient::sync() {
           case IN_CREATE: // new file
           case IN_MOVED_TO: // moved into folder
           case IN_CLOSE_WRITE: { // modified
-            log("inotify: `" + filename + "` created.");
+            log("inotify: `" + filename + "` added/modified.");
             enqueue_action(FilesyncAction(REQUEST_UPLOAD, filepath));
           } break;
           case IN_DELETE: // deleted
@@ -265,6 +276,7 @@ void FileSyncClient::process_update(fs_action_t &update) {
       remove(filepath.c_str());
       files.erase(filename);
       files_mtx.unlock();
+      files_sem.post();
     } break;
     default: {
       //nothing
@@ -405,6 +417,7 @@ void FileSyncClient::upload_file(std::string filepath) {
       }
       files[filename] = fileinfo;
       files_mtx.unlock();
+      files_sem.post();
     } break;
     case UPLOAD_DENY: {
       // log incident and abort
@@ -445,12 +458,6 @@ void FileSyncClient::download_file(std::string filepath) {
     files_mtx.unlock();
     return;
   }
-  // if (!recv_message(msg)) {
-  //   file.close();
-  //   remove(tmpfilepath.c_str());
-  //   files_mtx.unlock();
-  //   return;
-  // }
   msg.type = ntohl(msg.type);
   switch (msg.type) {
     case DOWNLOAD_ACCEPT:
@@ -518,25 +525,29 @@ void FileSyncClient::delete_file(std::string filename) {
 
   files_mtx.lock();
   files.erase(filename);
+  std::string filepath = userdir + "/" + filename;
+  remove(filepath.c_str());
   files_mtx.unlock();
+  files_sem.post();
   memcpy(msg.content, filename.c_str(), MAXNAME);
   if (!send_message(msg)) return;
   if (!recv_message(msg)) return;
   msg.type = ntohl(msg.type);
 }
 
-void FileSyncClient::list_files() {
+void FileSyncClient::sync_dir() {
   fs_message_t msg;
   memset((char*) &msg, 0, sizeof(msg));
   msg.type = htonl(REQUEST_FLIST);
 
   if (!send_message(msg)) return;
   if (!recv_message(msg)) return;
-
+  files_mtx.lock();
   uint32_t count;
   memcpy((char*)&count, msg.content, sizeof(uint32_t));
   count = ntohl(count);
   std::map<std::string, fileinfo_t> serverfiles;
+  std::map<std::string, fileinfo_t> localfiles = ls_files(userdir);
   for (uint32_t i = 0; i < count; ++i) {
     if (!recv_message(msg)) return;
     fileinfo_t *info = (fileinfo_t *) msg.content;
@@ -546,19 +557,43 @@ void FileSyncClient::list_files() {
     serverfiles[filename] = *info;
   }
   for (auto i = serverfiles.begin(); i != serverfiles.end(); ++i) {
-    if (!files.count(i->first)) {
-      std::string filepath = userdir + "/" + i->first;
+    auto local_it = localfiles.find(i->first);
+    std::string filepath = userdir + "/" + i->first;
+    if (local_it == localfiles.end()) {
       // download_file(filepath);
       enqueue_action(FilesyncAction(REQUEST_DOWNLOAD, filepath));
+      files[i->first] = i->second;
+    } else {
+      fileinfo_t *linfo = &local_it->second;
+      fileinfo_t *sinfo = &i->second;
+      if (linfo->size == sinfo->size && linfo->last_mod == sinfo->last_mod) {
+        files[i->first] = *sinfo;
+      } else {
+        std::vector<std::string> spl_path;
+        boost::split(spl_path, filepath, boost::is_any_of("."));
+        std::string bkp_sufix = flocaltime("bkp%Y%m%d%H%M%S", time(NULL));
+        if (spl_path.size() > 1) {
+          std::string ext = spl_path[spl_path.size() - 1];
+          spl_path[spl_path.size() - 1] = bkp_sufix;
+          spl_path.push_back(ext);
+        } else {
+          spl_path.push_back(bkp_sufix);
+        }
+        std::string bkpfilepath = boost::algorithm::join(spl_path, ".");
+        cp(filepath.c_str(),bkpfilepath.c_str());
+        enqueue_action(FilesyncAction(REQUEST_DOWNLOAD, i->first));
+      }
     }
   }
-  for (auto i = files.begin(); i != files.end(); ++i) {
+  for (auto i = localfiles.begin(); i != localfiles.end(); ++i) {
     if (!serverfiles.count(i->first)) {
       std::string filepath = userdir + "/" + i->first;
       // upload_file(filepath);
+
       enqueue_action(FilesyncAction(REQUEST_UPLOAD, filepath));
     }
   }
+  files_mtx.unlock();
 }
 
 bool FileSyncClient::send_message(fs_message_t& msg) {
@@ -591,7 +626,7 @@ bool FileSyncClient::recv_message(fs_message_t& msg) {
   catch (std::runtime_error e) {
     log(e.what());
     stop();
-    std::cerr << e.what() << endl;
+    // std::cerr << e.what() << endl;
     return false;
   }
   return true;
