@@ -77,6 +77,16 @@ protected:
   TCPConnection* tcp;
   ConnectedUser* user;
   FileSyncServer* server;
+  Semaphore rw_sem; // semaphore
+  int read_cont;
+  std::mutex rw_mutex;
+  void reader_enter();
+  void reader_exit();
+  void writer_enter();
+  void writer_exit();
+  void take_token();
+  void release_token();
+  bool has_token;
   bool active;
 };
 
