@@ -77,7 +77,8 @@ typedef struct filesync_message {
 } fs_message_t;
 
 typedef struct server {
-
+  uint32_t port;
+  char addr[MAXNAME];
 } fs_server_t;
 
 typedef struct user {

@@ -164,12 +164,16 @@ FileSyncSession* FileSyncServer::accept() {
     throw e;
   }
   fs_message_t msg;
+  memset(msg.content, 0, MSG_LENGTH);
   if (is_master) {
     msg.type = htonl(SERVER_GREET);
-    send_message(msg);
+    session->send_message(msg);
   } else {
     msg.type = htonl(SERVER_REDIR);
-    send_message(msg);
+    fs_server_t *master_info = (fs_server_t *) msg.content;
+    master_info->port = htonl(master_server.port);
+    strncpy(master_info->addr, master_server.addr, MAXNAME);
+    session->send_message(msg);
   }
   return session;
 }

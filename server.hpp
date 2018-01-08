@@ -47,7 +47,8 @@ protected:
   std::list<FileSyncSession*> sessions;
   std::mutex sessionsmutex;
   bool is_master;
-  // log events
+  fs_server_t master_server;
+  std::vector<fs_server_t> bkp_servers;
 };
 
 class FileSyncSession {

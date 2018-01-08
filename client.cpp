@@ -68,13 +68,19 @@ void FileSyncClient::connect(std::string address, int port) {
     tcp.connect(address, port);
     fs_message_t msg;
     if (!recv_message(msg)) {
-      throw std::runtime_error("bad server");
+      throw std::runtime_error("bad server: connection dropped");
     }
     msg.type = ntohl(msg.type);
-    if (msg.type == SERVER_REDIR) {
-
+    if (msg.type == SERVER_GREET) {
+      connected = true;
     }
-  } while ();
+    if (msg.type == SERVER_REDIR) {
+      fs_server_t *serverInfo = (fs_server_t*) msg.content;
+      port = ntohl(serverInfo->port);
+      address = serverInfo->addr;
+    }
+    throw std::runtime_error("bad server: invalid greeting");
+  } while (!connected);
 }
 
 void FileSyncClient::set_dir_prefix(std::string dir_prefix) {
