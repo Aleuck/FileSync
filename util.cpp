@@ -1,5 +1,5 @@
 #include "util.hpp"
-#include <sys/sendfile.h>  // sendfile
+// #include <sys/sendfile.h>  // sendfile
 #include <fcntl.h>         // open
 #include <unistd.h>        // close
 #include <sys/stat.h>      // fstat
@@ -182,31 +182,9 @@ void create_dir(std::string path) {
 }
 
 bool cp(std::string from_path, std::string to_path) {
-  int source = open(from_path.c_str(), O_RDONLY, 0);
-  if (source < 0) return false;
-  int dest = open(to_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-  if (dest < 0) {
-    close(source);
-    return false;
-  }
-  // struct required, rationale: function stat() exists also
-  struct stat stat_source;
-  fstat(source, &stat_source);
-  ssize_t total_copied = 0;
-  while (total_copied < stat_source.st_size) {
-    ssize_t aux = sendfile(dest, source, 0, stat_source.st_size);
-    if (aux < 0) {
-      close(source);
-      close(dest);
-      remove(to_path.c_str());
-      return false;
-    }
-    total_copied += aux;
-  }
-  close(source);
-  close(dest);
-
-  return true;
+  int err = link(from_path.c_str(), to_path.c_str());
+  if (err == 0) return true;
+  return false;
 }
 
 std::string filename_from_path(std::string filepath) {

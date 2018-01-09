@@ -197,7 +197,7 @@ FileSyncSession::FileSyncSession(void) {
   tcp = NULL;
   user = NULL;
   server = NULL;
-  rw_sem.post() // initialize the mutex with 1;
+  rw_sem.post(); // initialize the mutex with 1;
 }
 
 FileSyncSession::~FileSyncSession(void) {
