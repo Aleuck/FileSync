@@ -77,13 +77,6 @@ protected:
   TCPConnection* tcp;
   ConnectedUser* user;
   FileSyncServer* server;
-  Semaphore rw_sem; // semaphore
-  int read_cont;
-  std::mutex rw_mutex;
-  void reader_enter();
-  void reader_exit();
-  void writer_enter();
-  void writer_exit();
   void take_token();
   void release_token();
   bool has_token;
@@ -101,12 +94,22 @@ public:
 protected:
   uint32_t last_sid;
   std::list<FileSyncSession*> sessions;
+  std::mutex sessionsmutex;
+  // file list
   std::map<std::string,fileinfo_t> files;
   std::mutex files_mtx;
-  std::mutex sessionsmutex;
+  // action queue
   std::deque<fs_action_t> actions;
   uint32_t last_action;
   std::mutex actions_mtx;
+  // readers-writers system
+  Semaphore rw_sem; // semaphore
+  int read_cont;
+  std::mutex rw_mutex;
+  void reader_enter();
+  void reader_exit();
+  void writer_enter();
+  void writer_exit();
 };
 
 #endif

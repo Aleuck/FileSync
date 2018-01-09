@@ -257,21 +257,29 @@ void FileSyncSession::handle_requests() {
         handle_logout(msg);
         break;
       case REQUEST_SYNC:
+        user->reader_enter();
         handle_sync(msg);
+        user->reader_exit();
         break;
       case REQUEST_FLIST:
+        user->reader_enter();
         handle_flist(msg);
+        user->reader_exit();
         break;
       case REQUEST_UPLOAD: {
-        rw_sem.wait();
+        user->writer_enter();
         handle_upload(msg);
-        rw_sem.post();
+        user->writer_exit();
       } break;
       case REQUEST_DOWNLOAD:
+        user->reader_enter();
         handle_download(msg);
+        user->reader_exit();
         break;
       case REQUEST_DELETE:
+        user->writer_enter();
         handle_delete(msg);
+        user->writer_exit();
         break;
     }
   }
@@ -418,14 +426,15 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
   std::string filepath = user->userdir + "/" + filename;
   std::string tmpfilepath = filepath + TEMPFILE_SUFIX;
 
-  user->files_mtx.lock();
 
   std::ofstream file(tmpfilepath, std::ofstream::binary);
 
   // check existing file
+  user->files_mtx.lock();
   if (user->files.count(filename)) {
     old_fileinfo = &user->files[filename];
   }
+  user->files_mtx.unlock();
   if (old_fileinfo &&
       old_fileinfo->last_mod == fileinfo.last_mod &&
       old_fileinfo->size     == fileinfo.size) {
@@ -435,7 +444,6 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
     send_message(msg);
     file.close();
     remove(tmpfilepath.c_str());
-    user->files_mtx.unlock();
     return;
   }
 
@@ -446,14 +454,17 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
   msg.type = htonl(UPLOAD_ACCEPT);
   old_fileinfo = (fileinfo_t*) msg.content;
   old_fileinfo->last_mod = htonl(fileinfo.last_mod);
-  if (!send_message(msg)) return;
+  if (!send_message(msg)) {
+    file.close();
+    remove(tmpfilepath.c_str());
+    return;
+  }
   log("upload: accepted `" + filename + "`.");
   ssize_t total_received = 0;
   while (total_received < fileinfo.size) {
     if (!recv_message(msg)) {
       file.close();
       remove(tmpfilepath.c_str());
-      user->files_mtx.unlock();
       return;
     }
     msg.type = ntohl(msg.type);
@@ -468,7 +479,6 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
         file.close();
         remove(tmpfilepath.c_str());
         log("upload: failed `" + filename + "`.");
-        user->files_mtx.unlock();
         return;
     }
     total_received += MSG_LENGTH;
@@ -479,7 +489,9 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
   utimes.modtime = fileinfo.last_mod;
   utime(tmpfilepath.c_str(), &utimes);
   rename(tmpfilepath.c_str(), filepath.c_str());
+  user->files_mtx.lock();
   user->files[filename] = fileinfo;
+  user->files_mtx.unlock();
 
   // register action
   fs_action_t action;
@@ -489,7 +501,6 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
   strncpy(action.name, filename.c_str(), MAXNAME);
   user->log_action(action);
 
-  user->files_mtx.unlock();
   log("upload: finished `" + filename + "`.");
 }
 
@@ -508,10 +519,12 @@ void FileSyncSession::handle_download(fs_message_t& msg) {
   std::string filename = msg.content;
   std::string filepath = user->userdir + "/" + filename;
 
-  user->files_mtx.lock();
   std::ifstream file(filepath, std::ios::in|std::ios::binary);
 
-  if (!user->files.count(filename) || !file.is_open()) {
+  user->files_mtx.lock();
+  int aux = user->files.count(filename);
+  user->files_mtx.unlock();
+  if (!aux || !file.is_open()) {
     // send 'not found' reply
     resp.type = htonl(NOT_FOUND);
     memcpy(resp.content, msg.content, MSG_LENGTH);
@@ -522,9 +535,11 @@ void FileSyncSession::handle_download(fs_message_t& msg) {
       file.close();
       remove(filepath.c_str());
     }
+    user->files_mtx.lock();
     if (user->files.count(filename)) {
       user->files.erase(filename);
     }
+    user->files_mtx.unlock();
   } else {
     // send `accept` reply
     resp.type = htonl(DOWNLOAD_ACCEPT);
@@ -554,7 +569,6 @@ void FileSyncSession::handle_download(fs_message_t& msg) {
     }
     file.close();
   }
-  user->files_mtx.unlock();
 }
 
 void FileSyncSession::handle_delete(fs_message_t& msg) {
@@ -659,4 +673,30 @@ fs_action_t ConnectedUser::get_next_action(uint32_t id, uint32_t sid) {
   }
   actions_mtx.unlock();
   return action;
+}
+
+void ConnectedUser::reader_enter() {
+  rw_mutex.lock();
+  read_cont++;
+  if (read_cont == 1) {
+    rw_sem.wait();
+  }
+  rw_mutex.unlock();
+}
+
+void ConnectedUser::reader_exit() {
+  rw_mutex.lock();
+  read_cont--;
+  if (read_cont == 0) {
+    rw_sem.post();
+  }
+  rw_mutex.unlock();
+}
+
+void ConnectedUser::writer_enter() {
+  rw_sem.wait();
+}
+
+void ConnectedUser::writer_exit() {
+  rw_sem.post();
 }
