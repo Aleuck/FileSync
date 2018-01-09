@@ -71,15 +71,19 @@ void FileSyncClient::connect(std::string address, int port) {
       throw std::runtime_error("bad server: connection dropped");
     }
     msg.type = ntohl(msg.type);
-    if (msg.type == SERVER_GREET) {
-      connected = true;
+    switch (msg.type) {
+      case SERVER_GREET: {
+        connected = true;
+      } break;
+      case SERVER_REDIR: {
+        fs_server_t *serverInfo = (fs_server_t*) msg.content;
+        port = ntohl(serverInfo->port);
+        address = serverInfo->addr;
+      } break;
+      default: {
+        throw std::runtime_error("bad server: invalid greeting");
+      } break;
     }
-    if (msg.type == SERVER_REDIR) {
-      fs_server_t *serverInfo = (fs_server_t*) msg.content;
-      port = ntohl(serverInfo->port);
-      address = serverInfo->addr;
-    }
-    throw std::runtime_error("bad server: invalid greeting");
   } while (!connected);
 }
 

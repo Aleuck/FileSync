@@ -15,6 +15,7 @@ public:
   FileSyncSession* accept();
   void set_port(int port);
   void set_queue_size(int queue_size);
+  void set_master(std::string addr);
   void listen();
   void start();
   void stop();

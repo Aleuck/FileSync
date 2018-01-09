@@ -3,8 +3,9 @@
 
 #define DEFAULT_QUEUE_SIZE 5
 #define DEFAULT_PORT 53232
+#define DEFAULT_REPL_PORT 53233
 #define DEFAULT_MAX_CON 2
-#define SERVER_DIR "Filesync_dir"
+#define SERVER_DIR "filesync_dir"
 #define TEMPFILE_SUFIX ".fstemp"
 #define SSL_KEYFILE "KeyFile.pem"
 #define SSL_CERTFILE "CertFile.pem"
@@ -24,9 +25,15 @@ int main(int argc, char* argv[]) {
     exit(0);
   }
   int port = atoi(argv[1]);
+  serv.set_port(port);
+
+  if (argc > 3) {
+    // std::string masteraddr(argv[2]);
+    // int masterport = atoi(argv[3]);
+    // serv.set_master(masteraddr);
+  }
 
   std::cout << "starting service..." << std::endl;
-  serv.set_port(port);
 
   try {
     // Create thread that will run server->run() to handle connection requests
@@ -36,6 +43,7 @@ int main(int argc, char* argv[]) {
     std::cerr << e.what() << '\n';
     exit(0);
   }
+
   // Start interface
   std::cout << "starting interface..." << std::endl;
   FSServerUI ui(&serv);
@@ -69,6 +77,10 @@ FileSyncServer::FileSyncServer(void) {
 // FileSyncBackup FileSyncServer::acceptReplic() {
 //   //
 // }
+void FileSyncServer::set_master(std::string addr) {
+  is_master = false;
+}
+
 
 int FileSyncServer::countSessions() {
   qlogmutex.lock();
@@ -197,7 +209,6 @@ FileSyncSession::FileSyncSession(void) {
   tcp = NULL;
   user = NULL;
   server = NULL;
-  rw_sem.post(); // initialize the mutex with 1;
 }
 
 FileSyncSession::~FileSyncSession(void) {
@@ -651,6 +662,7 @@ void FileSyncSession::close() {
 ConnectedUser::ConnectedUser(void) {
   last_action = 0;
   last_sid = 0;
+  rw_sem.post(); // initialize the mutex with 1;
 }
 
 void ConnectedUser::log_action(fs_action_t& action) {
