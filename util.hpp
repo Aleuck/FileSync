@@ -45,6 +45,11 @@
 #define REQUEST_LOCK    10
 #define REQUEST_UNLOCK  11
 
+#define NEW_USER          3
+#define NEW_UPDATE        4
+#define REQUEST_USERLIST  5
+#define REQUEST_USERFILES 6
+
 #define LOGIN_ACCEPT     1
 #define LOGIN_DENY       2
 #define UPLOAD_ACCEPT    3
@@ -71,7 +76,7 @@
 #define TRANSFER_OK     10
 #define TRANSFER_END    11
 
-#define MSG_LENGTH 512
+#define MSG_LENGTH 1024
 
 class ServerInfo {
 public:
@@ -107,6 +112,11 @@ typedef struct filesync_action {
   uint32_t sid;
   char name[MAXNAME];
 } fs_action_t;
+
+typedef struct user_update {
+  char uid[MAXNAME];
+  fs_action_t info;
+} fs_update_t;
 
 // classes
 class User;

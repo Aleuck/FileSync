@@ -44,6 +44,9 @@ Semaphore::Semaphore(void) {
 }
 
 void Semaphore::init(int value) {
+  if (initialized) {
+    while (destroy());
+  }
   sem_init(&sem, 0, value);
   initialized = true;
 }

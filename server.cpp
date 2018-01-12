@@ -75,22 +75,41 @@ FileSyncServer::FileSyncServer(void) {
   server_dir = get_homedir() + "/" + SERVER_DIR;
 }
 
-void FileSyncServer::connectToMaster(std::string addr, int port) {
-  backup_tcp.connect(master.ip, master.port);
+bool FileSyncServer::connectToMaster(std::string addr, int port) {
   fs_message_t msg;
   fs_server_t *srvinfo = (fs_server_t *) msg.content;
-  memset(msg.content, 0. MSG_LENGTH);
-  strncpy(srvinfo->ip, addr.c_str(), MAXNAME);
-  srvinfo->port = htonl(tcp_port);
-  send_msg(backup_tcp, msg);
-  recv_msg(backup_tcp, msg);
-  msg.type = ntohl(msg.type);
-  switch (msg.type) {
-    case SERVER_GREET: {} break;
-    case SERVER_REDIR: {} break;
-    default: {} break;
+  while (true) {
+    backup_tcp.connect(master.ip, DEFAULT_REPL_PORT);
+    memset(msg.content, 0, MSG_LENGTH);
+    // greet as a server
+    msg.type = htonl(SERVER_GREET);
+    // send the master's ip so they know it.
+    strncpy(srvinfo->ip, addr.c_str(), MAXNAME);
+    // send my public port
+    srvinfo->port = htonl(tcp_port);
+    send_msg(&backup_tcp, msg);
+    recv_msg(&backup_tcp, msg);
+    msg.type = ntohl(msg.type);
+    switch (msg.type) {
+      case SERVER_GREET: {
+        // got the master's public port
+        master.port = ntohl(srvinfo->port);
+        // got my own ip address
+        address.ip = srvinfo->ip;
+        return true;
+      } break;
+      case SERVER_REDIR: {
+        // got the real master's address
+        master.ip = srvinfo->ip;
+        // got the real master's public port
+        master.port = ntohl(srvinfo->port);
+      } break;
+      default: {
+        return false;
+      } break;
+    }
   }
-  master.port = ntohl(srvinfo.port)
+  return false;
 }
 
 // FileSyncBackup FileSyncServer::acceptReplic() {
@@ -100,7 +119,6 @@ void FileSyncServer::set_master(ServerInfo server) {
   master = server;
   is_master = false;
 }
-
 
 int FileSyncServer::countSessions() {
   qlogmutex.lock();
@@ -152,7 +170,7 @@ void FileSyncServer::start() {
 void FileSyncServer::wait() {
   if (thread_active) {
     thread.join();
-    bkp_thread.join();
+    master_thread.join();
     thread_active = false;
   }
 }
@@ -160,6 +178,10 @@ void FileSyncServer::wait() {
 void FileSyncServer::stop() {
   keep_running = false;
   tcp.shutdown();
+  master_tcp.shutdown();
+  if (!is_master) {
+    backup_tcp.shutdown();
+  }
 }
 
 void FileSyncServer::log(std::string msg) {
@@ -169,9 +191,51 @@ void FileSyncServer::log(std::string msg) {
   qlogsemaphore.post();
 }
 
-bool FileSyncServer::connectToMaster
-
 void* FileSyncServer::run_backup() {
+  fs_message_t msg;
+  while (keep_running) {
+    recv_msg(&backup_tcp, msg);
+    msg.type = ntohl(msg.type);
+    switch (msg.type) {
+      case NEW_USER: {
+        std::string uid(msg.content);
+        create_user(uid);
+      } break;
+      case NEW_UPDATE: {
+        fs_update_t *update = (fs_update_t *) msg.content;
+
+      } break;
+      case REQUEST_USERLIST: {} break;
+      case REQUEST_USERFILES: {} break;
+      default: {} break;
+    }
+  }
+  return NULL;
+}
+
+void FileSyncServer::process_update(fs_update_t &update) {
+  std::string uid(update.uid);
+  std::string filename = update.info.name;
+  std::string filepath = users[uid].userdir + "/" + filename;
+  update.info.id = ntohl(update.info.id);
+  update.info.type = ntohl(update.info.type);
+  update.info.timestamp = ntohl(update.info.timestamp);
+  update.info.sid = ntohl(update.info.sid);
+  switch (update.info.type) {
+    case A_FILE_UPDATED: {
+      fileinfo_t fileinfo;
+
+    } break;
+    case A_FILE_DELETED: {
+      users[uid].files_mtx.lock();
+      remove(filepath.c_str());
+      users[uid].files.erase(filename);
+      users[uid].files_mtx.unlock();
+    } break;
+    default: {
+      //nothing
+    } break;
+  }
 }
 
 // method for thread that accept connections from other servers (backups)
@@ -189,9 +253,14 @@ void* FileSyncServer::run_master() {
       bkpconnsmutex.lock();
       bkpconns.push_back(conn);
       bkpconnsmutex.unlock();
+      char cstr_port[16];
+      sprintf(cstr_port, "%d", conn->addr.port);
+      std::string str_port(cstr_port);
+      log("new backup server connected (" + conn->addr.ip + ":" + str_port + ")");
     }
   }
   master_tcp.close();
+  return NULL;
 }
 
 // method to accept a server connection (backup)
@@ -204,8 +273,8 @@ ServerBackupConn* FileSyncServer::accept_bkp() {
   }
   bkp = new ServerBackupConn;
   bkp->tcp = conn;
-  bkp->info.ip = conn->getAddr();
-  bkp->info.port = 0;
+  bkp->addr.ip = conn->getAddr();
+  bkp->addr.port = 0;
   bkp->server = this;
 
   fs_message_t msg;
@@ -225,10 +294,10 @@ ServerBackupConn* FileSyncServer::accept_bkp() {
     return NULL;
   }
   // get the backup public port
-  bkp->info.port = ntohl(srvinfo->port);
+  bkp->addr.port = ntohl(srvinfo->port);
   // get my ip address
-  if (info.ip = "") {
-    info.ip = srvinfo->ip;
+  if (address.ip == "") {
+    address.ip = srvinfo->ip;
   }
   if (is_master) {
     // greet the backup
@@ -237,7 +306,7 @@ ServerBackupConn* FileSyncServer::accept_bkp() {
     // send back my public port
     srvinfo->port = htonl(tcp_port);
     // send back their ip (so they know it)
-    srvinfo->ip = bkp->info.ip;
+    strncpy(srvinfo->ip, bkp->addr.ip.c_str(), MAXNAME);
     send_msg(conn, msg);
   } else {
     // redirect to the current master
@@ -309,6 +378,18 @@ FileSyncSession* FileSyncServer::accept() {
     session->send_message(msg);
   }
   return session;
+}
+
+bool FileSyncServer::create_user(std::string uid) {
+  server->usersmutex.lock();
+  bool newuser = !server->users.count(uid);
+  if (newuser) {
+    users[uid].userid = uid;
+    users[uid].userdir = server_dir + "/" + uid;
+    create_dir(users[uid].userdir);
+    users[uid].files = ls_files(users[uid].userdir);
+  }
+  server->usersmutex.unlock();
 }
 
 void FileSyncServer::set_port(int port) {
@@ -441,12 +522,11 @@ void FileSyncSession::handle_login(fs_message_t& msg) {
   msg.content[MAXNAME-1] = 0;
   std::string uid(msg.content);
 
-  server->usersmutex.lock();
   bool newuser = !server->users.count(uid);
   if (newuser) {
-    server->users[uid].userid = uid;
-    server->users[uid].userdir = server->server_dir + "/" + uid;
+    server->create_user(uid);
   }
+  server->usersmutex.lock();
   if (server->users[uid].sessions.size() >= server->max_con) {
     resp.type = LOGIN_DENY;
     log("login: denied user `" + uid + "`");
@@ -456,24 +536,6 @@ void FileSyncSession::handle_login(fs_message_t& msg) {
     user = &server->users[uid];
     sid = ++user->last_sid;
     server->users[uid].sessions.push_back(this);
-
-    if (newuser) {
-      log("loading user");
-
-      // create userdir if needed
-      create_dir(user->userdir);
-
-      // get files already in server dir
-      user->files = ls_files(user->userdir);
-      if (user->files.size() > 0) {
-        log("initial files:");
-        for (auto i = user->files.begin(); i != user->files.end(); ++i) {
-          log(i->first);
-        }
-      } else {
-        log("server userdir is empty");
-      }
-    }
 
     uint32_t last_action = htonl(user->last_action);
     memcpy(resp.content, (char*) &last_action, sizeof(uint32_t));

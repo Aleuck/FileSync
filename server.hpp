@@ -16,7 +16,7 @@ public:
   ServerBackupConn(void);
   ~ServerBackupConn(void);
 protected:
-  ServerInfo info;
+  ServerInfo addr;
   TCPConnection *tcp;
   FileSyncServer *server;
 };
@@ -35,7 +35,8 @@ public:
   void log(std::string);
   int countSessions();
   int countUsers();
-  int connectToMaster(std::string addr, int port);
+  bool connectToMaster(std::string addr, int port);
+  bool create_user(std::string uid);
   std::list<std::string> qlog;
   std::mutex qlogmutex;
   Semaphore qlogsemaphore;
@@ -47,6 +48,7 @@ protected:
   void* run_master();
   ServerBackupConn* accept_bkp();
   void* run_backup();
+  void process_update(fs_update_t &update);
   bool keep_running;
   bool thread_active;
   std::thread thread;
