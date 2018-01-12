@@ -28,9 +28,10 @@ int main(int argc, char* argv[]) {
   serv.set_port(port);
 
   if (argc > 3) {
-    // std::string masteraddr(argv[2]);
-    // int masterport = atoi(argv[3]);
-    // serv.set_master(masteraddr);
+    ServerInfo master;
+    master.ip = argv[2];
+    master.port = atoi(argv[3]);
+    serv.set_master(master);
   }
 
   std::cout << "starting service..." << std::endl;
@@ -59,6 +60,10 @@ void close_server(int sig) {
   server->stop();
 }
 
+/* ------------------------ *
+    Class: FileSyncServer
+ * ------------------------ */
+
 FileSyncServer::FileSyncServer(void) {
   max_con = DEFAULT_MAX_CON;
   tcp_port = DEFAULT_PORT;
@@ -77,7 +82,8 @@ FileSyncServer::FileSyncServer(void) {
 // FileSyncBackup FileSyncServer::acceptReplic() {
 //   //
 // }
-void FileSyncServer::set_master(std::string addr) {
+void FileSyncServer::set_master(ServerInfo server) {
+  master = server;
   is_master = false;
 }
 
@@ -96,17 +102,32 @@ int FileSyncServer::countUsers() {
   return count;
 }
 
-
 void FileSyncServer::start() {
   try {
     create_dir(server_dir);
+    std::vector<std::string> userdirs = ls_dirs(server_dir);
+    for (size_t i = 0; i < userdirs.size(); ++i) {
+      users[userdirs[i]].userid = userdirs[i];
+      users[userdirs[i]].userdir = server->server_dir + "/" + userdirs[i];
+      users[userdirs[i]].files = ls_files(users[userdirs[i]].userdir);
+    }
     tcp.open_cert(SSL_CERTFILE, SSL_KEYFILE);
     tcp.bind(tcp_port);
     tcp.listen(tcp_queue_size);
+    master_tcp.open_cert(SSL_CERTFILE, SSL_KEYFILE);
+    master_tcp.bind(DEFAULT_REPL_PORT);
+    master_tcp.listen(tcp_queue_size);
+    if (!is_master) {
+      backup_tcp.connect(master.ip, master.port);
+    }
     tcp_active = true;
     keep_running = true;
     thread_active = true;
     thread = std::thread(&FileSyncServer::run, this);
+    master_thread = std::thread(&FileSyncServer::run_bkp, this);
+    if (!is_master) {
+      backup_thread = std::thread(&FileSyncServer::run_bkp_r, this);
+    }
     // aux = pthread_create(&pthread, NULL, (void* (*)(void*)) &FileSyncServer::run, this);
   }
   catch (std::runtime_error e) {
@@ -117,7 +138,7 @@ void FileSyncServer::start() {
 void FileSyncServer::wait() {
   if (thread_active) {
     thread.join();
-    // pthread_join(pthread, NULL);
+    bkp_thread.join();
     thread_active = false;
   }
 }
@@ -134,6 +155,86 @@ void FileSyncServer::log(std::string msg) {
   qlogsemaphore.post();
 }
 
+// method for thread that accept connections from other servers (backups)
+void* FileSyncServer::run_bkp() {
+  ServerBackupConn *conn;
+  while (keep_running) {
+    conn = NULL;
+    try {
+      conn = accept_bkp();
+    } catch (std::runtime_error e) {
+      log(e.what());
+      continue;
+    }
+    if (conn != NULL) {
+      bkpconnsmutex.lock();
+      bkpconns.push_back(conn);
+      bkpconnsmutex.unlock();
+    }
+  }
+  master_tcp.close();
+}
+
+// method to accept a server connection (backup)
+ServerBackupConn* FileSyncServer::accept_bkp() {
+  ServerBackupConn* bkp = NULL;
+
+  TCPConnection* conn = master_tcp.accept();
+  if (conn == NULL) {
+    return NULL;
+  }
+  bkp = new ServerBackupConn;
+  bkp->tcp = conn;
+  bkp->info.ip = conn->getAddr();
+  bkp->info.port = 0;
+  bkp->server = this;
+
+  fs_message_t msg;
+  fs_server_t *srvinfo = (fs_server_t *) msg.content;
+  memset(msg.content, 0, MSG_LENGTH);
+  msg.type = htonl(SERVER_GREET);
+  try {
+    if (!recv_msg(conn, msg)) {
+      conn->close();
+      delete bkp;
+      return NULL;
+    }
+  }
+  catch (std::runtime_error e) {
+    conn->close();
+    delete bkp;
+    return NULL;
+  }
+  // get the backup public port
+  bkp->info.port = ntohl(srvinfo->port);
+  // get my ip address
+  if (info.ip = "") {
+    info.ip = srvinfo->ip;
+  }
+  if (is_master) {
+    // greet the backup
+    memset(msg.content, 0, MSG_LENGTH);
+    msg.type = htonl(SERVER_GREET);
+    // send back my public port
+    srvinfo->port = htonl(tcp_port);
+    // send back their ip (so they know it)
+    srvinfo->ip = bkp->info.ip;
+    send_msg(conn, msg);
+  } else {
+    // redirect to the current master
+    msg.type = htonl(SERVER_REDIR);
+    fs_server_t *master_info = (fs_server_t *) msg.content;
+    master_info->port = htonl(address.port);
+    strncpy(master_info->ip, address.ip.c_str(), MAXNAME);
+    send_msg(conn, msg);
+    conn->close();
+    delete bkp;
+    return NULL;
+  }
+  return bkp;
+}
+
+// method for thread that accept connections from clients (sessions)
 void* FileSyncServer::run() {
   FileSyncSession* session;
   while (keep_running) {
@@ -158,6 +259,7 @@ void* FileSyncServer::run() {
   return NULL;
 }
 
+// method to accept a connection from a client (session)
 FileSyncSession* FileSyncServer::accept() {
   FileSyncSession* session = NULL;
   try {
@@ -183,8 +285,8 @@ FileSyncSession* FileSyncServer::accept() {
   } else {
     msg.type = htonl(SERVER_REDIR);
     fs_server_t *master_info = (fs_server_t *) msg.content;
-    master_info->port = htonl(master_server.port);
-    strncpy(master_info->addr, master_server.addr, MAXNAME);
+    master_info->port = htonl(master.port);
+    strncpy(master_info->ip, master.ip.c_str(), MAXNAME);
     session->send_message(msg);
   }
   return session;
@@ -204,6 +306,16 @@ void FileSyncServer::set_queue_size(int queue_size) {
     throw std::runtime_error("Cannot set queue_size while tcp is active");
 }
 
+ServerBackupConn::ServerBackupConn(void) {
+}
+
+ServerBackupConn::~ServerBackupConn(void) {
+  if (tcp) delete tcp;
+}
+
+/* ------------------------ *
+    Class: FileSyncSession
+ * ------------------------ */
 
 FileSyncSession::FileSyncSession(void) {
   tcp = NULL;
@@ -212,7 +324,7 @@ FileSyncSession::FileSyncSession(void) {
 }
 
 FileSyncSession::~FileSyncSession(void) {
-  delete tcp;
+  if (tcp) delete tcp;
 }
 
 void FileSyncSession::logout() {
@@ -245,10 +357,11 @@ void FileSyncSession::logout() {
     user->sessionsmutex.unlock();
   }
 
-  std::string uid = user->userid;
-  if (user->sessions.size() == 0) {
-    server->users.erase(uid);
-  }
+  // remove user if was the only session
+  // std::string uid = user->userid;
+  // if (user->sessions.size() == 0) {
+  //   server->users.erase(uid);
+  // }
   server->usersmutex.unlock();
 }
 
@@ -461,7 +574,7 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
   // update file modification time
   fileinfo.last_mod = time(NULL);
 
-  // accept
+  // accept, sending the updated timestamp of the file
   msg.type = htonl(UPLOAD_ACCEPT);
   old_fileinfo = (fileinfo_t*) msg.content;
   old_fileinfo->last_mod = htonl(fileinfo.last_mod);
@@ -471,38 +584,33 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
     return;
   }
   log("upload: accepted `" + filename + "`.");
-  ssize_t total_received = 0;
-  while (total_received < fileinfo.size) {
-    if (!recv_message(msg)) {
+  try {
+    if (!recv_file(tcp, file, fileinfo.size)) {
       file.close();
       remove(tmpfilepath.c_str());
+      log("upload: failed `" + filename + "`: disconnected");
+      close();
       return;
     }
-    msg.type = ntohl(msg.type);
-    switch (msg.type) {
-      case TRANSFER_OK:
-        file.write(msg.content, MSG_LENGTH);
-        break;
-      case TRANSFER_END:
-        file.write(msg.content, fileinfo.size - total_received);
-        break;
-      default:
-        file.close();
-        remove(tmpfilepath.c_str());
-        log("upload: failed `" + filename + "`.");
-        return;
-    }
-    total_received += MSG_LENGTH;
+  }
+  catch (std::runtime_error e) {
+    file.close();
+    remove(tmpfilepath.c_str());
+    std::string reason(e.what());
+    log("upload: failed `" + filename + "`: " + reason);
+    close();
+    return;
   }
   file.close();
   struct utimbuf utimes;
   utimes.actime = fileinfo.last_mod;
   utimes.modtime = fileinfo.last_mod;
   utime(tmpfilepath.c_str(), &utimes);
-  rename(tmpfilepath.c_str(), filepath.c_str());
+
   user->files_mtx.lock();
+
+  rename(tmpfilepath.c_str(), filepath.c_str());
   user->files[filename] = fileinfo;
-  user->files_mtx.unlock();
 
   // register action
   fs_action_t action;
@@ -511,6 +619,8 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
   action.sid = sid;
   strncpy(action.name, filename.c_str(), MAXNAME);
   user->log_action(action);
+
+  user->files_mtx.unlock();
 
   log("upload: finished `" + filename + "`.");
 }
@@ -561,23 +671,27 @@ void FileSyncSession::handle_download(fs_message_t& msg) {
     *netfileinfo = *hostfileinfo;
     netfileinfo->last_mod = htonl(netfileinfo->last_mod);
     netfileinfo->size = htonl(netfileinfo->size);
-    send_message(resp);
-
-    // send file content
-    resp.type = htonl(TRANSFER_OK);
-    size_t total_sent = 0;
-    while (total_sent < hostfileinfo->size) {
-      memset(resp.content, 0, MSG_LENGTH);
-      file.read(resp.content, MSG_LENGTH);
-      if (file.eof()) {
-        resp.type = htonl(TRANSFER_END);
-      }
-      if (!send_message(resp)) {
-        log("download: failed `" + filename + "`");
-        break;
-      }
-      total_sent += MSG_LENGTH;
+    if (!send_message(resp)) {
+      file.close();
+      return;
     }
+    // send file content
+    try {
+      if (!send_file(tcp, file, hostfileinfo->size)) {
+        file.close();
+        log("download: failed `" + filename + "`");
+        close();
+        return;
+      }
+    }
+    catch (std::runtime_error e) {
+      file.close();
+      std::string reason(e.what());
+      log("download: failed `" + filename + "`: " + reason);
+      close();
+      return;
+    }
+    log("download: success `" + filename + "`");
     file.close();
   }
 }
@@ -611,10 +725,8 @@ void FileSyncSession::handle_delete(fs_message_t& msg) {
 }
 
 bool FileSyncSession::send_message(fs_message_t& msg) {
-  ssize_t aux;
   try {
-    aux = tcp->send((char*)&msg, sizeof(fs_message_t));
-    if (!aux) {
+    if (!send_msg(tcp, msg)) {
       close();
       return false;
     }
@@ -628,10 +740,8 @@ bool FileSyncSession::send_message(fs_message_t& msg) {
 }
 
 bool FileSyncSession::recv_message(fs_message_t& msg) {
-  ssize_t aux;
   try {
-    aux = tcp->recv((char*)&msg, sizeof(fs_message_t));
-    if (!aux) {
+    if (!recv_msg(tcp, msg)) {
       close();
       return false;
     }
@@ -659,10 +769,16 @@ void FileSyncSession::close() {
   tcp->close();
 }
 
+/* ------------------------ *
+    Class: ConnectedUser
+ * ------------------------ */
+
 ConnectedUser::ConnectedUser(void) {
   last_action = 0;
   last_sid = 0;
-  rw_sem.post(); // initialize the mutex with 1;
+  read_cont = 0;
+  rw_sem.init(1); // initialize the mutex with 1;
+  rw_mutex.init(1); // initialize the mutex with 1;
 }
 
 void ConnectedUser::log_action(fs_action_t& action) {
@@ -688,21 +804,21 @@ fs_action_t ConnectedUser::get_next_action(uint32_t id, uint32_t sid) {
 }
 
 void ConnectedUser::reader_enter() {
-  rw_mutex.lock();
+  rw_mutex.wait();
   read_cont++;
   if (read_cont == 1) {
     rw_sem.wait();
   }
-  rw_mutex.unlock();
+  rw_mutex.post();
 }
 
 void ConnectedUser::reader_exit() {
-  rw_mutex.lock();
+  rw_mutex.wait();
   read_cont--;
   if (read_cont == 0) {
     rw_sem.post();
   }
-  rw_mutex.unlock();
+  rw_mutex.post();
 }
 
 void ConnectedUser::writer_enter() {

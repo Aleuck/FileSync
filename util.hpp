@@ -31,6 +31,8 @@
 #include <iostream>
 #include <fstream>
 
+#include "tcp.hpp"
+
 #define MAXNAME 256
 
 #define REQUEST_LOGIN    1
@@ -71,6 +73,12 @@
 
 #define MSG_LENGTH 512
 
+class ServerInfo {
+public:
+  std::string ip;
+  int port;
+};
+
 typedef struct filesync_message {
   uint32_t type;
   char content[MSG_LENGTH];
@@ -78,7 +86,7 @@ typedef struct filesync_message {
 
 typedef struct server {
   uint32_t port;
-  char addr[MAXNAME];
+  char ip[MAXNAME];
 } fs_server_t;
 
 typedef struct user {
@@ -165,7 +173,12 @@ std::string get_homedir();
 std::string filename_from_path(std::string filepath);
 std::string dirname_from_path(std::string filepath);
 std::map<std::string, fileinfo_t> ls_files(std::string dirname);
+std::vector<std::string> ls_dirs(std::string dirname);
 std::string flocaltime(std::string format, time_t t);
 void create_dir(std::string path);
 bool cp(std::string from_path, std::string to_path);
+bool send_msg(TCPConnection *conn, fs_message_t &msg);
+bool recv_msg(TCPConnection *conn, fs_message_t &msg);
+bool send_file(TCPConnection *conn, std::ifstream &file, size_t filesize);
+bool recv_file(TCPConnection *conn, std::ofstream &file, size_t filesize);
 #endif

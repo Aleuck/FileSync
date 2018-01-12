@@ -78,7 +78,7 @@ void FileSyncClient::connect(std::string address, int port) {
       case SERVER_REDIR: {
         fs_server_t *serverInfo = (fs_server_t*) msg.content;
         port = ntohl(serverInfo->port);
-        address = serverInfo->addr;
+        address = serverInfo->ip;
       } break;
       default: {
         throw std::runtime_error("bad server: invalid greeting");

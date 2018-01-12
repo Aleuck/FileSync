@@ -7,15 +7,28 @@
 class FileSyncServer;
 class FileSyncSession;
 class ConnectedUser;
+class ServerBackupConn;
+
+
+class ServerBackupConn {
+  friend class FileSyncServer;
+public:
+  ServerBackupConn(void);
+  ~ServerBackupConn(void);
+protected:
+  ServerInfo info;
+  TCPConnection *tcp;
+  std::thread thread;
+  FileSyncServer *server;
+};
 
 class FileSyncServer {
 friend class FileSyncSession;
 public:
   FileSyncServer(void);
-  FileSyncSession* accept();
   void set_port(int port);
   void set_queue_size(int queue_size);
-  void set_master(std::string addr);
+  void set_master(ServerInfo server);
   void listen();
   void start();
   void stop();
@@ -31,11 +44,19 @@ public:
   std::mutex qerrorlogmutex;
 protected:
   void* run();
+  FileSyncSession* accept();
+  void* run_bkp();
+  ServerBackupConn* accept_bkp();
   bool keep_running;
   bool thread_active;
   std::thread thread;
+  std::thread master_thread;
+  std::thread backup_thread;
   // pthread_t pthread;
   TCPServer tcp;
+  TCPServer master_tcp;
+  TCPClient backup_tcp;
+
   unsigned int max_con;
   int tcp_port;
   int tcp_queue_size;
@@ -47,8 +68,11 @@ protected:
   std::mutex usersmutex;
   std::list<FileSyncSession*> sessions;
   std::mutex sessionsmutex;
+  std::list<ServerBackupConn*> bkpconns;
+  std::mutex bkpconnsmutex;
   bool is_master;
-  fs_server_t master_server;
+  ServerInfo address;
+  ServerInfo master;
   std::vector<fs_server_t> bkp_servers;
 };
 
@@ -78,14 +102,12 @@ protected:
   TCPConnection* tcp;
   ConnectedUser* user;
   FileSyncServer* server;
-  void take_token();
-  void release_token();
-  bool has_token;
   bool active;
 };
 
 class ConnectedUser {
 friend class FileSyncSession;
+friend class FileSyncServer;
 public:
   ConnectedUser(void);
   void log_action(fs_action_t &action);
@@ -105,8 +127,8 @@ protected:
   std::mutex actions_mtx;
   // readers-writers system
   Semaphore rw_sem; // semaphore
+  Semaphore rw_mutex;
   int read_cont;
-  std::mutex rw_mutex;
   void reader_enter();
   void reader_exit();
   void writer_enter();

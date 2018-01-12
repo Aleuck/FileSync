@@ -14,6 +14,7 @@ class TCPConnection;
 class TCPSock {
 public:
   TCPSock(void);
+  ~TCPSock(void);
   std::string getAddr();
   int getPort();
   void close();
@@ -30,6 +31,7 @@ friend class TCPServer;
 friend class TCPClient;
 public:
   TCPConnection(void);
+  ~TCPConnection(void);
   ssize_t send(char* buffer, size_t length);
   ssize_t recv(char* buffer, size_t length);
   // void lock();

@@ -3,6 +3,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <sstream>
+#include <mutex>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -20,6 +21,9 @@ TCPSock::TCPSock(void) {
   sock_d = 0;
   memset((char *) &addr, 0, sizeof(addr));
 }
+TCPSock::~TCPSock(void) {
+  if (ctx) SSL_CTX_free(ctx);
+}
 
 void TCPSock::close() {
   if (sock_d >= 0) {
@@ -31,12 +35,22 @@ void TCPSock::shutdown() {
   ::shutdown(sock_d, SHUT_RD);
 }
 
+std::string TCPSock::getAddr() {
+  static std::mutex mtx;
+  mtx.lock();
+  std::string s_addr(inet_ntoa(addr.sin_addr));
+  mtx.unlock();
+  return s_addr;
+}
+
 TCPServer::TCPServer(void) {
   // create TCP socket
   sock_d = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
   if (sock_d <= 0) {
     throw std::runtime_error("Could not create socket.");
   }
+
+  // initialize SSL
   OpenSSL_add_all_algorithms();
   SSL_load_error_strings();
   method = SSLv23_server_method();
@@ -46,7 +60,6 @@ TCPServer::TCPServer(void) {
     ERR_print_errors_fp(stderr);
     abort();
   }
-  // fcntl(sock_d, F_SETFL, fcntl(sock_d, F_GETFL, 0) | O_NONBLOCK);
 }
 
 void TCPServer::bind(int port) {
@@ -65,6 +78,7 @@ void TCPServer::listen(int queue_size) {
     throw std::runtime_error("Could not start listenning.");
   }
 }
+
 void TCPServer::open_cert(const char* cert, const char* pkey) {
   if (SSL_CTX_use_certificate_file(ctx, cert, SSL_FILETYPE_PEM) != 1) {
     throw std::runtime_error("Error loading SSL certificate.");
@@ -87,7 +101,7 @@ TCPConnection* TCPServer::accept() {
     if (errno == EWOULDBLOCK) return NULL;
     throw std::runtime_error("Could not accept connection");
   }
-  con->ctx = ctx;
+  con->ctx = NULL;
   con->ssl = SSL_new(ctx);
   SSL_set_fd(con->ssl, con->sock_d);
   if (SSL_accept(con->ssl) != 1) {
@@ -219,10 +233,13 @@ void TCPClient::connect(std::string address, int port) {
     throw std::runtime_error("could not start ssl");
   }
 }
-
+TCPConnection::~TCPConnection() {
+  if (ssl) SSL_free(ssl);
+}
 TCPConnection::TCPConnection() {
   socklen_t sock_size = sizeof(addr);
   memset((char *) &addr, 0, sock_size);
+  ssl = NULL;
   sock_d = 0;
 }
 

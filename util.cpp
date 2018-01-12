@@ -200,7 +200,25 @@ std::string dirname_from_path(std::string filepath) {
   std::string dirname_ = dirname(cfilepath);
   return dirname_;
 }
-
+std::vector<std::string> ls_dirs(std::string dirname){
+  std::vector<std::string> dirs;
+  DIR* dirp = opendir(dirname.c_str());
+  struct dirent entry;
+  struct dirent *result;
+  readdir_r(dirp, &entry, &result);
+  while (result) {
+    std::string entry_name(entry.d_name);
+    std::string entry_path = dirname + "/" + entry_name;
+    struct stat path_stat;
+    stat(entry_path.c_str(), &path_stat);
+    if (S_ISDIR(path_stat.st_mode)) {
+      if (entry_name != "." && entry_name != "..")
+      dirs.push_back(entry_name);
+    }
+    readdir_r(dirp, &entry, &result);
+  }
+  return dirs;
+}
 std::map<std::string, fileinfo_t> ls_files(std::string dirname) {
   std::map<std::string, fileinfo_t> files;
   DIR* dirp = opendir(dirname.c_str());
@@ -222,6 +240,66 @@ std::map<std::string, fileinfo_t> ls_files(std::string dirname) {
     readdir_r(dirp, &entry, &result);
   }
   return files;
+}
+
+bool send_msg(TCPConnection *conn, fs_message_t &msg) {
+  ssize_t aux;
+  aux = conn->send((char*)&msg, sizeof(fs_message_t));
+  if (!aux) {
+    return false;
+  }
+  return true;
+}
+bool recv_msg(TCPConnection *conn, fs_message_t &msg) {
+  ssize_t aux;
+  aux = conn->recv((char*)&msg, sizeof(fs_message_t));
+  if (!aux) {
+    return false;
+  }
+  return true;
+}
+bool send_file(TCPConnection *conn, std::ifstream &file, size_t filesize) {
+  fs_message_t msg;
+  msg.type = htonl(TRANSFER_OK);
+  size_t total_sent = 0;
+  while (total_sent < filesize) {
+    memset(msg.content, 0, MSG_LENGTH);
+    file.read(msg.content, MSG_LENGTH);
+    if (file.eof()) {
+      msg.type = htonl(TRANSFER_END);
+    }
+    if (!send_msg(conn, msg)) {
+      return false;
+    }
+    total_sent += MSG_LENGTH;
+  }
+  return true;
+}
+bool recv_file(TCPConnection *conn, std::ofstream &file, size_t filesize) {
+  fs_message_t msg;
+  size_t total_received = 0;
+  while (total_received < filesize) {
+    if (!recv_msg(conn, msg)) {
+      return false;
+    }
+    msg.type = ntohl(msg.type);
+    switch (msg.type) {
+      case TRANSFER_OK:
+        file.write(msg.content, MSG_LENGTH);
+        break;
+      case TRANSFER_END:
+        if (filesize - total_received > MSG_LENGTH) {
+          // security measure
+          return false;
+        }
+        file.write(msg.content, filesize - total_received);
+        break;
+      default:
+        return false;
+    }
+    total_received += MSG_LENGTH;
+  }
+  return true;
 }
 
 std::string flocaltime(std::string format, time_t t) {
