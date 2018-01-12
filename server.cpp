@@ -75,9 +75,23 @@ FileSyncServer::FileSyncServer(void) {
   server_dir = get_homedir() + "/" + SERVER_DIR;
 }
 
-// void FileSyncServer::connectToMaster(std::string addr, int port) {
-//   //
-// }
+void FileSyncServer::connectToMaster(std::string addr, int port) {
+  backup_tcp.connect(master.ip, master.port);
+  fs_message_t msg;
+  fs_server_t *srvinfo = (fs_server_t *) msg.content;
+  memset(msg.content, 0. MSG_LENGTH);
+  strncpy(srvinfo->ip, addr.c_str(), MAXNAME);
+  srvinfo->port = htonl(tcp_port);
+  send_msg(backup_tcp, msg);
+  recv_msg(backup_tcp, msg);
+  msg.type = ntohl(msg.type);
+  switch (msg.type) {
+    case SERVER_GREET: {} break;
+    case SERVER_REDIR: {} break;
+    default: {} break;
+  }
+  master.port = ntohl(srvinfo.port)
+}
 
 // FileSyncBackup FileSyncServer::acceptReplic() {
 //   //
@@ -118,15 +132,15 @@ void FileSyncServer::start() {
     master_tcp.bind(DEFAULT_REPL_PORT);
     master_tcp.listen(tcp_queue_size);
     if (!is_master) {
-      backup_tcp.connect(master.ip, master.port);
+      connectToMaster(master.ip, master.port);
     }
     tcp_active = true;
     keep_running = true;
     thread_active = true;
     thread = std::thread(&FileSyncServer::run, this);
-    master_thread = std::thread(&FileSyncServer::run_bkp, this);
+    master_thread = std::thread(&FileSyncServer::run_master, this);
     if (!is_master) {
-      backup_thread = std::thread(&FileSyncServer::run_bkp_r, this);
+      backup_thread = std::thread(&FileSyncServer::run_backup, this);
     }
     // aux = pthread_create(&pthread, NULL, (void* (*)(void*)) &FileSyncServer::run, this);
   }
@@ -155,8 +169,13 @@ void FileSyncServer::log(std::string msg) {
   qlogsemaphore.post();
 }
 
+bool FileSyncServer::connectToMaster
+
+void* FileSyncServer::run_backup() {
+}
+
 // method for thread that accept connections from other servers (backups)
-void* FileSyncServer::run_bkp() {
+void* FileSyncServer::run_master() {
   ServerBackupConn *conn;
   while (keep_running) {
     conn = NULL;

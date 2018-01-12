@@ -18,7 +18,6 @@ public:
 protected:
   ServerInfo info;
   TCPConnection *tcp;
-  std::thread thread;
   FileSyncServer *server;
 };
 
@@ -45,8 +44,9 @@ public:
 protected:
   void* run();
   FileSyncSession* accept();
-  void* run_bkp();
+  void* run_master();
   ServerBackupConn* accept_bkp();
+  void* run_backup();
   bool keep_running;
   bool thread_active;
   std::thread thread;
