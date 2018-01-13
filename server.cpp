@@ -780,7 +780,7 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
   update.action.type = htonl(action.type);
   update.action.sid = htonl(action.sid);
   update.action.size = htonl(fileinfo.size);
-  strncpy(action.name, filename.c_str(), MAXNAME);
+  strncpy(update.action.name, filename.c_str(), MAXNAME);
 
   std::ifstream ufile(filepath, std::ios::in|std::ios::binary);
 
@@ -894,9 +894,30 @@ void FileSyncSession::handle_delete(fs_message_t& msg) {
     action.timestamp = time(NULL);
     action.type = A_FILE_DELETED;
     action.sid = sid;
+    action.size = 0;
     strncpy(action.name, filename.c_str(), MAXNAME);
     user->log_action(action);
 
+    // tell backup servers that file was deleted
+    msg.type = htonl(NEW_UPDATE);
+    fs_update_t *update = (fs_update_t *) msg.content;
+    update->id = htonl(++server->last_update);
+    strncpy(update->uid, user->userid.c_str(), MAXNAME);
+    update->action.timestamp = htonl(action.timestamp);
+    update->action.type = htonl(action.type);
+    update->action.sid = htonl(action.sid);
+    update->action.size = htonl(action.size);
+    strncpy(update->action.name, action.name, MAXNAME);
+    server->bkpconnsmutex.lock();
+    for (auto it = server->bkpconns.begin(); it != server->bkpconns.end(); it++) {
+      try {
+        if (!send_msg((*it)->tcp, msg)) continue;
+      }
+      catch (std::runtime_error e) {
+        continue;
+      }
+    }
+    server->bkpconnsmutex.unlock();
     server->log("delete: success `" + filename + "`");
   }
   user->files_mtx.unlock();
