@@ -202,6 +202,7 @@ void* FileSyncServer::run_backup() {
       case NEW_USER: {
         std::string uid(msg.content);
         create_user(uid);
+        log("BACKUP ("+uid+") NEW USER");
       } break;
       case NEW_UPDATE: {
         fs_update_t *update = (fs_update_t *) msg.content;
@@ -558,6 +559,9 @@ void FileSyncSession::handle_requests() {
         handle_delete(msg);
         user->writer_exit();
         break;
+      default:
+        log("invalid request");
+        break;
     }
   }
   logout();
@@ -790,7 +794,7 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
       if (!send_file((*it)->tcp, ufile, fileinfo.size)) continue;
     }
     catch (std::runtime_error e) {
-      break;
+      continue;
     }
   }
   server->bkpconnsmutex.unlock();
