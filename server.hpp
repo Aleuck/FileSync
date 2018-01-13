@@ -12,6 +12,7 @@ class ServerBackupConn;
 
 class ServerBackupConn {
   friend class FileSyncServer;
+  friend class FileSyncSession;
 public:
   ServerBackupConn(void);
   ~ServerBackupConn(void);
@@ -57,7 +58,9 @@ protected:
   // pthread_t pthread;
   TCPServer tcp;
   TCPServer master_tcp;
+  std::mutex master_mutex;
   TCPClient backup_tcp;
+  uint32_t last_update;
 
   unsigned int max_con;
   int tcp_port;
@@ -123,10 +126,14 @@ protected:
   // file list
   std::map<std::string,fileinfo_t> files;
   std::mutex files_mtx;
-  // action queue
+  // action queue (used for clients to check for updates)
   std::deque<fs_action_t> actions;
   uint32_t last_action;
   std::mutex actions_mtx;
+  // update queues (used to send updates to backups)
+  std::deque<fs_update_t> updates;
+  std::mutex updates_mtx;
+  Semaphore updates_sem;
   // readers-writers system
   Semaphore rw_sem; // semaphore
   Semaphore rw_mutex;

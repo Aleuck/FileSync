@@ -87,8 +87,10 @@ bool FileSyncServer::connectToMaster(std::string addr, int port) {
     strncpy(srvinfo->ip, addr.c_str(), MAXNAME);
     // send my public port
     srvinfo->port = htonl(tcp_port);
-    send_msg(&backup_tcp, msg);
-    recv_msg(&backup_tcp, msg);
+    if (!send_msg(&backup_tcp, msg) || !recv_msg(&backup_tcp, msg)) {
+      log("Error: Could not connect to master");
+      return false;
+    }
     msg.type = ntohl(msg.type);
     switch (msg.type) {
       case SERVER_GREET: {
@@ -203,7 +205,7 @@ void* FileSyncServer::run_backup() {
       } break;
       case NEW_UPDATE: {
         fs_update_t *update = (fs_update_t *) msg.content;
-
+        process_update(*update);
       } break;
       case REQUEST_USERLIST: {} break;
       case REQUEST_USERFILES: {} break;
@@ -214,23 +216,73 @@ void* FileSyncServer::run_backup() {
 }
 
 void FileSyncServer::process_update(fs_update_t &update) {
-  std::string uid(update.uid);
-  std::string filename = update.info.name;
-  std::string filepath = users[uid].userdir + "/" + filename;
-  update.info.id = ntohl(update.info.id);
-  update.info.type = ntohl(update.info.type);
-  update.info.timestamp = ntohl(update.info.timestamp);
-  update.info.sid = ntohl(update.info.sid);
-  switch (update.info.type) {
-    case A_FILE_UPDATED: {
-      fileinfo_t fileinfo;
+  std::string uid(update.uid); // user id
 
+  update.action.id = ntohl(update.action.id);
+  update.action.type = ntohl(update.action.type);
+  update.action.timestamp = ntohl(update.action.timestamp);
+  update.action.size = ntohl(update.action.size);
+  update.action.sid = ntohl(update.action.sid);
+
+  std::string filename = update.action.name;
+  std::string filepath = users[uid].userdir + "/" + filename;
+
+  switch (update.action.type) {
+    case A_FILE_UPDATED: {
+      fs_message_t msg;
+      memset((char*) &msg, 0, sizeof(fs_message_t));
+
+      fileinfo_t fileinfo;
+      fileinfo.last_mod = update.action.timestamp;
+      fileinfo.size = update.action.size;
+      strncpy(fileinfo.name, update.action.name, MAXNAME);
+
+      std::string filename(fileinfo.name);
+      std::string filepath = users[uid].userdir + "/" + filename;
+      std::string tmpfilepath = filepath + TEMPFILE_SUFIX;
+
+      std::ofstream file(tmpfilepath, std::ofstream::binary);
+
+      try {
+        if (!recv_file(&backup_tcp, file, fileinfo.size)) {
+          file.close();
+          remove(tmpfilepath.c_str());
+          log("BACKUP ("+uid+") UPDATED failed `" + filename + "`: disconnected");
+          return;
+        }
+      }
+      catch (std::runtime_error e) {
+        file.close();
+        remove(tmpfilepath.c_str());
+        std::string reason(e.what());
+        log("BACKUP ("+uid+") UPDATED failed `" + filename + "`: " + reason);
+        return;
+      }
+      file.close();
+
+      struct utimbuf utimes;
+      utimes.actime = fileinfo.last_mod;
+      utimes.modtime = fileinfo.last_mod;
+      utime(tmpfilepath.c_str(), &utimes);
+
+
+      users[uid].files_mtx.lock();
+      rename(tmpfilepath.c_str(), filepath.c_str());
+      users[uid].files[filename] = fileinfo;
+      users[uid].files_mtx.unlock();
+
+      // register action
+      users[uid].last_action = update.action.id;
+      users[uid].log_action(update.action);
+
+      log("BACKUP ("+uid+") UPDATED `" + filename + "`.");
     } break;
     case A_FILE_DELETED: {
       users[uid].files_mtx.lock();
       remove(filepath.c_str());
       users[uid].files.erase(filename);
       users[uid].files_mtx.unlock();
+      log("BACKUP ("+uid+") DELETED `" + filename + "`.");
     } break;
     default: {
       //nothing
@@ -390,6 +442,7 @@ bool FileSyncServer::create_user(std::string uid) {
     users[uid].files = ls_files(users[uid].userdir);
   }
   server->usersmutex.unlock();
+  return newuser;
 }
 
 void FileSyncServer::set_port(int port) {
@@ -522,9 +575,23 @@ void FileSyncSession::handle_login(fs_message_t& msg) {
   msg.content[MAXNAME-1] = 0;
   std::string uid(msg.content);
 
-  bool newuser = !server->users.count(uid);
+  bool newuser = server->create_user(uid);
   if (newuser) {
-    server->create_user(uid);
+    server->log("NEW USER: " + uid);
+
+    // tell backup servers to create new user
+    server->bkpconnsmutex.lock();
+    msg.type = htonl(NEW_USER);
+    memcpy(msg.content, uid.c_str(), MAXNAME);
+    for (auto it = server->bkpconns.begin(); it != server->bkpconns.end(); it++) {
+      try {
+        if (!send_msg((*it)->tcp, msg)) continue;
+      }
+      catch (std::runtime_error e) {
+        continue;
+      }
+    }
+    server->bkpconnsmutex.unlock();
   }
   server->usersmutex.lock();
   if (server->users[uid].sessions.size() >= server->max_con) {
@@ -689,9 +756,9 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
   utime(tmpfilepath.c_str(), &utimes);
 
   user->files_mtx.lock();
-
   rename(tmpfilepath.c_str(), filepath.c_str());
   user->files[filename] = fileinfo;
+  user->files_mtx.unlock();
 
   // register action
   fs_action_t action;
@@ -701,7 +768,33 @@ void FileSyncSession::handle_upload(fs_message_t& msg) {
   strncpy(action.name, filename.c_str(), MAXNAME);
   user->log_action(action);
 
-  user->files_mtx.unlock();
+  // send update to backup servers
+  fs_update_t update;
+  update.id = htonl(++server->last_update);
+  strncpy(update.uid, user->userid.c_str(), MAXNAME);
+  update.action.timestamp = htonl(action.timestamp);
+  update.action.type = htonl(action.type);
+  update.action.sid = htonl(action.sid);
+  update.action.size = htonl(fileinfo.size);
+  strncpy(action.name, filename.c_str(), MAXNAME);
+
+  std::ifstream ufile(filepath, std::ios::in|std::ios::binary);
+
+  server->bkpconnsmutex.lock();
+  for (auto it = server->bkpconns.begin(); it != server->bkpconns.end(); it++) {
+    msg.type = htonl(NEW_UPDATE);
+    memcpy(msg.content, (char *) &update, sizeof(fs_update_t));
+    try {
+      if (!send_msg((*it)->tcp, msg)) continue;
+      ufile.seekg(0, std::ios::beg);
+      if (!send_file((*it)->tcp, ufile, fileinfo.size)) continue;
+    }
+    catch (std::runtime_error e) {
+      break;
+    }
+  }
+  server->bkpconnsmutex.unlock();
+
 
   log("upload: finished `" + filename + "`.");
 }

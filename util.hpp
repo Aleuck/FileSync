@@ -71,18 +71,15 @@
 
 #define ABORT           55
 #define UNAUTHENTICATED 66
-// structures
 
-#define TRANSFER_OK     10
-#define TRANSFER_END    11
+#define TRANSFER_OK        10
+#define TRANSFER_END       11
+#define TRANSFER_CONFIRMED 12
 
 #define MSG_LENGTH 1024
 
-class ServerInfo {
-public:
-  std::string ip;
-  int port;
-};
+// structures
+
 
 typedef struct filesync_message {
   uint32_t type;
@@ -110,12 +107,14 @@ typedef struct filesync_action {
   uint32_t type;
   uint32_t timestamp;
   uint32_t sid;
+  uint32_t size;
   char name[MAXNAME];
 } fs_action_t;
 
 typedef struct user_update {
+  uint32_t id;
   char uid[MAXNAME];
-  fs_action_t info;
+  fs_action_t action;
 } fs_update_t;
 
 // classes
@@ -124,6 +123,14 @@ class File;
 class Transfer;
 class Semaphore;
 class FSClock;
+class ServerInfo;
+
+class ServerInfo {
+public:
+  std::string ip;
+  int port;
+  int id;
+};
 
 class User {
 public:
